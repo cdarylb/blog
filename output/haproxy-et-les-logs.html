@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+
+        <title>Haproxy et les logs</title>
+        <meta charset="utf-8" />
+        <link href="http://cyrilb.me/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Trajectoires d'un admin Full Atom Feed" />
+        <link href="http://cyrilb.me/feeds/haproxy.atom.xml" type="application/atom+xml" rel="alternate" title="Trajectoires d'un admin Categories Atom Feed" />
+
+
+        <!-- Mobile viewport optimized: j.mp/bplateviewport -->
+        <meta name="viewport" content="width=device-width,initial-scale=1, maximum-scale=1">
+
+        <link rel="stylesheet" type="text/css" href="http://cyrilb.me/theme/gumby.css" />
+        <link rel="stylesheet" type="text/css" href="http://cyrilb.me/theme/style.css" />
+        <link rel="stylesheet" type="text/css" href="http://cyrilb.me/theme/pygment.css" />
+
+        <script src="http://cyrilb.me/theme/js/libs/modernizr-2.6.2.min.js"></script>
+
+
+
+
+</head>
+
+<body id="index" class="home">
+
+
+    <div class="container">
+
+        <div class="row">
+
+          <header id="banner" class="body">
+                  <h1><a href="http://cyrilb.me/">Trajectoires d'un admin <strong></strong></a></h1>
+          </header><!-- /#banner -->
+
+            <div id="navigation" class="navbar row">
+              <a href="#" gumby-trigger="#navigation &gt; ul" class="toggle"><i class="icon-menu"></i></a>
+             
+              <ul class="columns">
+                <li><a href="http://cyrilb.me/">Home</a></li>
+
+                <li><a href="http://cyrilb.me/pages/about.html">About</a></li>
+
+              </ul>
+            </div>
+
+<section id="content" class="body">
+
+   <div class="row">
+        <div class="eleven columns">
+
+
+            <header>
+              <h2 class="entry-title">
+                <a href="http://cyrilb.me/haproxy-et-les-logs.html" rel="bookmark"
+                   title="Permalink to Haproxy et les logs">Haproxy et les logs</a></h2>
+           
+            </header>
+            <footer class="post-info">
+              <abbr class="published" title="2014-05-09T09:19:00">
+                ven. 09 mai 2014
+              </abbr>
+              <address class="vcard author">
+                By <a class="url fn" href="http://cyrilb.me/author/cyrilb.html">cyrilb</a>
+              </address>
+            </footer><!-- /.post-info -->
+            <div class="entry-content">
+              <p>Utiliser HaProxy sans activer les logs  et savoir les lire, c'est comme
+être une fille et ne pas avoir de shampooing. Voici quelques clefs pour
+y voir un peu plus clair. Ce billet ne parlera que des logs HTTP, mais
+c'est plus ou moins la même chose pour TCP.</p>
+<p><strong>1. Activer les logs</strong></p>
+<p>Ca se fait en deux secondes.</p>
+<p>Dans la section 'global' on ajoute :</p>
+<div class="highlight"><pre>log /dev/log local0 info
+log /dev/log local0 notice
+</pre></div>
+
+
+<p>Je pourrai bien sûr les renvoyer directement sur un serveur de logs genre :</p>
+<div class="highlight"><pre>log 10.17.9.5 notice
+</pre></div>
+
+
+<p>Dans la section 'default' on ajoute (optionnel) :</p>
+<div class="highlight"><pre>option log-health-checks
+</pre></div>
+
+
+<p>On se rend ensuite dans /etc/rsyslog.d (pour les utilisateurs de Ubuntu)
+et on crée le fichier haproxy.conf :</p>
+<div class="highlight"><pre><span class="k">if</span> <span class="o">(</span><span class="nv">$programname</span> <span class="o">==</span> <span class="s1">&#39;haproxy&#39;</span> and <span class="nv">$syslogseverity</span>-text <span class="o">==</span> <span class="s1">&#39;info&#39;</span><span class="o">)</span> <span class="k">then</span> -/var/log/haproxy/haproxy-info.log
+&amp; ~
+<span class="k">if</span> <span class="o">(</span><span class="nv">$programname</span> <span class="o">==</span> <span class="s1">&#39;haproxy&#39;</span> and <span class="nv">$syslogseverity</span>-text <span class="o">==</span> <span class="s1">&#39;notice&#39;</span><span class="o">)</span> <span class="k">then</span> -/var/log/haproxy/haproxy-notice.log
+&amp; ~
+</pre></div>
+
+
+<p>Comme on veut faire les choses bien, on va configurer la rotation des
+logs générés par haproxy avec logrotate. Il suffit de se rendre dans
+/etc/logrotate.d/ et de créer le fichier haproxy :</p>
+<div class="highlight"><pre>/var/log/haproxy/haproxy-*.log <span class="o">{</span>
+    missingok
+    notifempty
+    sharedscripts
+    rotate 14
+    daily
+    compress
+    postrotate
+    reload rsyslog &gt;/dev/null 2&gt;&amp;1 <span class="o">||</span> <span class="nb">true</span>
+<span class="nb">    </span>endscript
+    <span class="o">}</span>
+</pre></div>
+
+
+<p>Une fois tout cela effectué, relancez haproxy/syslog/votre chien pour
+que toutes les modifications soient prises en compte.</p>
+<p><strong>2. Comment lire les logs</strong></p>
+<p>Voici à quoi ressemble une ligne de logs dans haproxy :</p>
+<div class="highlight"><pre>lb1 haproxy<span class="o">[</span>7112<span class="o">]</span>: 157.56.92.164:41073 <span class="o">[</span>09/May/2014:09:06:59.112<span class="o">]</span> main webback/web3 0/0/0/298/298 200 9041 - - --NI 11/11/0/0/0 0/0 <span class="s2">&quot;GET /fr/heros/menage/bulligny-54113/121324 HTTP/1.1&quot;</span>
+</pre></div>
+
+
+<p>C'est vraiment bluffant de constater à quel niveau de détail on peut
+descendre dans cette ligne de logs. Voici à quoi chaque segment
+correspond.</p>
+<p><strong>lb1</strong> : Le hostname du serveur qui a écrit le log.<br />
+<strong>haproxy[7112]</strong> : Le nom du process/PID qui a écrit le log.<br />
+<strong>157.56.92.164:41073</strong> : L'adresse IP du client + PORT<br />
+<strong>[09/May/2014:09:06:59.112]</strong> : L'accept date du log<br />
+<strong>main</strong> : Nom du frontend<br />
+<strong>webback/web3</strong> : Backend/serveur qui a servi la requête<br />
+<strong>0/0/0/298/298</strong> : Ca se corse avec ces 5 champs, nous pouvons les
+segmenter comme suit<br />
+<strong>Tq</strong> : Le temps passé en ms de la requête http du client<br />
+<strong>Tw</strong> : Le temps passé en ms d'attente des queues si il y en a<br />
+<strong>Tc</strong> : Le temps passé en ms d'attente de connexion au serveur<br />
+<strong>Tr</strong> : Le temps en ms d'envoi de la réponse du serveur vers le
+client<br />
+<strong>Tt</strong> : Le temps total de parcours entre l'ouverture de connexion et
+la fermeture de la connexion<br />
+<strong>200</strong> : Code retour http<br />
+<strong>9041</strong> : Nombre total de bits transmis au client<br />
+<strong>-</strong> : captured_request_cookie<br />
+<strong>-</strong> : captured_response_cookie<br />
+<strong>--NI</strong> : Comment la session s'est terminée, "termination_state", j'y
+reviendrai un autre jour, là j'ai piscine.<br />
+<strong>11/11/0/0/0</strong> : On peut segmenter ce tronçon comme suit<br />
+<strong>actonn</strong> : Le nombre total de connexions lorsque la session a été
+loggée<br />
+<strong>feconn</strong> : Le nombre total de connexions sur le frontend<br />
+<strong>beconn</strong> : Le nombre total de connexions sur le backend<br />
+<strong>srv_conn</strong> : Le nombre de connexions actives sur le serveur<br />
+<strong>retries</strong> : Le nombre de connexions qu'il a fallu pour se connecter
+au serveur<br />
+<strong>0/0</strong> Découpage comme suit<br />
+<strong>srv_queue</strong> : Nombre de requêtes qu'il a fallu passer avant de se
+connecter au serveur.<br />
+<strong>backend_queue</strong> : Nombre de requêtes qu'il a fallu passer avant de
+se connecter au backend.<br />
+<strong>"GET /fr/heros/menage/bulligny-54113/121324 HTTP/1.1"</strong> : Notre
+requête HTTP.</p>
+<p>Hey, le format des logs ne vous convient pas ? Pas de problèmes, vous
+pouvez en changer aisément. Mettons que par exemple vous ne désiriez
+logger que l'adresse IP du client et la requête HTTP, la directive
+log-format permet de le faire :</p>
+<div class="highlight"><pre>log-format %ci %r
+</pre></div>
+
+
+<p>Toutes ces variables sont bien sûres accessibles dans la documentation
+de haproxy.</p>
+<p><strong>3. Analyser les logs de haproxy grâce à halog</strong></p>
+<p>C'est là que ça devient intéressant grâce à halog. Pour l'instant il
+faut l'installer en se rendant dans les sources de
+haproxy/contrib/halog.</p>
+<div class="highlight"><pre>root@corniaud:/usr/local/src/haproxy-1.5-dev22/contrib/halog# make
+gcc -O3  -o halog -I../../include -I../../ebtree ../../ebtree/ebtree.c ../../ebtree/eb32tree.c ../../ebtree/eb64tree.c ../../ebtree/ebmbtree.c ../../ebtree/ebsttree.c ../../ebtree/ebistree.c ../../ebtree/ebimtree.c halog.c fgets2.c
+</pre></div>
+
+
+<p>Une fois halog installé (vous pouvez en faire un lien symbolique vers
+/usr/bin) voici quelques exemples de ce que halog permet de faire :</p>
+<p>Voir les derniers messages d'erreur tirés des logs de haproxy :</p>
+<div class="highlight"><pre>cat /var/log/haproxy/haproxy-info.log | halog -e
+May  6 11:25:04 lb2 haproxy<span class="o">[</span>7112<span class="o">]</span>: 82.236.50.216:53111 <span class="o">[</span>06/May/2014:11:25:03.191<span class="o">]</span> main~ webback/web2 64/0/0/-1/1373 -1 0 - - CHVN 31/31/0/0/0 0/0 <span class="s2">&quot;POST /up/account/pic/upload HTTP/1.1&quot;</span>
+May  6 11:29:19 lb2 haproxy<span class="o">[</span>7112<span class="o">]</span>: 80.12.100.198:7300 <span class="o">[</span>06/May/2014:11:29:18.555<span class="o">]</span> main~ webback/web3 1399/0/-1/-1/1399 503 212 - - CCVN 38/38/0/0/0 0/0 <span class="s2">&quot;GET /f/pics/user_3263079/big_9cid38215a7f2177ed95106e78754d69b088d06b1.jpeg HTTP/1.1&quot;</span>
+</pre></div>
+
+
+<p>En tirer carrément des stats sur le nombre de hits, de temps de réponse,
+de codes retours http, etc...</p>
+<div class="highlight"><pre>root@lb2:~# cat /var/log/haproxy/haproxy-info.log | halog -srv -H -q | awk <span class="s1">&#39;NR==1; NR&gt;1 { print $0 | &quot;sort -k12rn,12&quot;}&#39;</span> | column -t
+<span class="c">#srv_name               1xx  2xx    3xx   4xx   5xx  other  tot_req  req_ok  pct_ok  avg_ct  avg_rt</span>
+fuel1/monitor02          0    2023   37    0     0    0      2060     2060    100.0   0       131
+webback/web3            0    16286  1940  37    12   3      18278    18265   99.9    1       70
+webback/web2            0    15574  1992  33    4    3      17606    17602   100.0   1       63
+dagobah/lb2              0    447    0     0     0    0      447      447     100.0   0       53
+webback/web1            0    17000  1831  36    5    1      18873    18867   100.0   1       47
+badcountry/maintenance  0    2      0     12    0    0      14       14      100.0   0       0
+main/&lt;NOSRV&gt;            0    0      0     3650  0    0      3650     0       0.0     0       0
+</pre></div>
+
+
+<p>On peut vraiment tout faire, je vous laisse découvrir la suite, mais
+c'est l'outil idéal pour tracker les erreurs 50x par exemple ou trouver
+un mouton noir dans votre cluster de serveurs.</p>
+<p><strong>4. Aller (un peu) plus loin avec les logs de haproxy.</strong></p>
+<p>Vous vous en êtes rendu compte, même si de base, les logs sont
+pleinement exploitables, on peut ajouter d'autres infos, par exemple (à
+mettre dans votre frontend par exemple) :</p>
+<div class="highlight"><pre>capture request header Referer               len 64
+capture request header User-Agent            len 128
+capture request header Host                  len 64
+capture request header X-Forwarded-For       len 64
+capture request header Accept-Encoding       len 64
+</pre></div>
+
+
+<p>C'est assez parlant non ? On peut aller encore plus loin (l'exemple
+parle de lui même une fois de plus) :</p>
+<div class="highlight"><pre>capture response header X-WebApp-Id     len 5
+capture response header X-Req-My-Uid       len 36
+rspidel ^<span class="o">(</span>X-WebApp-Id|Server|X-Req-My-Uid<span class="o">)</span>:
+</pre></div>
+
+
+<p>Le prochain billet sera certainement consacré aux "termination_states"
+qui sont indispensables.</p>
+            </div><!-- /.entry-content -->
+
+
+        </div><!-- /.eleven.columns -->
+
+<div class="three columns">
+
+<h4>Pages</h4>
+
+ <ul>
+      <li><a href="http://cyrilb.me/pages/about.html">About</a></li>
+  </ul>
+
+<h4>Categories</h4>
+<ul>
+		<li><a href="http://cyrilb.me/category/haproxy.html">haproxy</a></li>
+		<li><a href="http://cyrilb.me/category/haproxy-infra-linux-nginx.html">haproxy, infra, linux, nginx</a></li>
+		<li><a href="http://cyrilb.me/category/linux.html">linux</a></li>
+		<li><a href="http://cyrilb.me/category/linux-nginx.html">linux, nginx</a></li>
+		<li><a href="http://cyrilb.me/category/nginx.html">nginx</a></li>
+</ul>
+
+
+<h4>Tags</h4>
+	<ul>
+	    <li class="tag-1"><a href="http://cyrilb.me/tag/haproxy.html">haproxy</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/aria2c.html">aria2c</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/acl.html">acl</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/locale.html">locale</a></li>
+	    <li class="tag-1"><a href="http://cyrilb.me/tag/linux.html">linux</a></li>
+	    <li class="tag-2"><a href="http://cyrilb.me/tag/logs.html">logs</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/curl.html">curl</a></li>
+	    <li class="tag-1"><a href="http://cyrilb.me/tag/nginx.html">nginx</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/workers.html">workers</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/logstash.html">logstash</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/wget.html">wget</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/headers.html">headers</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/infra.html">infra</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/iostat.html">iostat</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/kibana.html">kibana</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/rsyslog.html">rsyslog</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/hdparm.html">hdparm</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/process.html">process</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/syslog.html">syslog</a></li>
+</ul>
+
+
+
+</div> </div><!-- /.row -->
+
+
+</section>
+
+       </div><!-- /.row -->
+    </div><!-- /.container -->
+
+
+       <div class="container.nopad bg">
+
+    
+        <footer id="credits" class="row">
+          <div class="seven columns left-center">
+
+                   <address id="about" class="vcard body">
+                    Proudly powered by <a href="http://getpelican.com/">Pelican</a>,
+                    which takes great advantage of <a href="http://python.org">Python</a>.
+                    <br />
+                    Based on the <a target="_blank" href="http://gumbyframework.com">Gumby Framework</a>
+                    </address>
+          </div>
+
+
+          <div class="seven columns">
+            <div class="row">
+              <ul class="socbtns">
+
+                <li><div class="btn primary"><a href="https://github.com/cdarylb" target="_blank">Github</a></div></li>
+
+                <li><div class="btn twitter"><a href="https://twitter.com/cdarylb" target="_blank">Twitter</a></div></li>
+
+                <li><div class="btn facebook"><a href="https://www.facebook.com/cyril.beaufrere" target="_blank">Facebook</a></div></li>
+
+
+              </ul>
+            </div>
+          </div>
+        </footer>
+
+    </div>
+
+
+  <script src="http://cyrilb.me/theme/js/libs/jquery-1.9.1.min.js"></script>
+  <script src="http://cyrilb.me/theme/js/libs/gumby.min.js"></script>
+  <script src="http://cyrilb.me/theme/js/plugins.js"></script>
+</body>
+</html>

@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+
+        <title>Mutualiser ses logs</title>
+        <meta charset="utf-8" />
+        <link href="http://cyrilb.me/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Trajectoires d'un admin Full Atom Feed" />
+        <link href="http://cyrilb.me/feeds/linux.atom.xml" type="application/atom+xml" rel="alternate" title="Trajectoires d'un admin Categories Atom Feed" />
+
+
+        <!-- Mobile viewport optimized: j.mp/bplateviewport -->
+        <meta name="viewport" content="width=device-width,initial-scale=1, maximum-scale=1">
+
+        <link rel="stylesheet" type="text/css" href="http://cyrilb.me/theme/gumby.css" />
+        <link rel="stylesheet" type="text/css" href="http://cyrilb.me/theme/style.css" />
+        <link rel="stylesheet" type="text/css" href="http://cyrilb.me/theme/pygment.css" />
+
+        <script src="http://cyrilb.me/theme/js/libs/modernizr-2.6.2.min.js"></script>
+
+
+
+
+</head>
+
+<body id="index" class="home">
+
+
+    <div class="container">
+
+        <div class="row">
+
+          <header id="banner" class="body">
+                  <h1><a href="http://cyrilb.me/">Trajectoires d'un admin <strong></strong></a></h1>
+          </header><!-- /#banner -->
+
+            <div id="navigation" class="navbar row">
+              <a href="#" gumby-trigger="#navigation &gt; ul" class="toggle"><i class="icon-menu"></i></a>
+             
+              <ul class="columns">
+                <li><a href="http://cyrilb.me/">Home</a></li>
+
+                <li><a href="http://cyrilb.me/pages/about.html">About</a></li>
+
+              </ul>
+            </div>
+
+<section id="content" class="body">
+
+   <div class="row">
+        <div class="eleven columns">
+
+
+            <header>
+              <h2 class="entry-title">
+                <a href="http://cyrilb.me/mutualiser-ses-logs.html" rel="bookmark"
+                   title="Permalink to Mutualiser ses logs">Mutualiser ses logs</a></h2>
+           
+            </header>
+            <footer class="post-info">
+              <abbr class="published" title="2013-12-10T19:20:00">
+                mar. 10 décembre 2013
+              </abbr>
+              <address class="vcard author">
+                By <a class="url fn" href="http://cyrilb.me/author/cyrilb.html">cyrilb</a>
+              </address>
+            </footer><!-- /.post-info -->
+            <div class="entry-content">
+              <p>Lorqu’on a plusieurs serveurs (webs, mysql, etc), il devient compliqué
+d’aller d’une machine à l’autre pour s’assurer que tout va bien ou pour
+déceler un problème qui affecte l’ensemble de votre infrastructure.</p>
+<p>C’est pour cela, qu’en plus de stocker les logs individuellement sur
+chaque serveur, il est fortement recommandé de les exporter sur un
+serveur dédié et de les mutualiser afin de pouvoir effectuer des
+traitement groupés sur l’ensemble des logs à notre disposition.</p>
+<p>Et comme tout bon admin, qui dit traitement mutualisé dit traitements
+industrialisés.</p>
+<p>Nous allons voir ici deux façons de mutualiser les logs nginx de ses
+frontaux webs pour l’exemple, sans trop rentrer dans le détail, la
+première avec Rsyslog, la seconde avec logstash.</p>
+<p><strong>Mutualiser ses logs nginx avec Rsyslog:</strong></p>
+<p><a href="http://www.rsyslog.com/" title="RSyslog">Rsyslog</a> est propulsé de base avec
+Ubuntu, rien à configurer donc, ça tourne déjà, on va donc se contenter
+de configurer rsyslog afin de parser les logs nginx et de les envoyer au
+serveur qui va mutualiser les logs.</p>
+<p>Sur les serveurs webs, rajouter le fichier nginx.conf dans
+/etc/rsyslog.d/</p>
+<div class="highlight"><pre><span class="nv">$ModLoad</span> imfile
+
+<span class="nv">$InputFileName</span>          /usr/local/nginx/logs/access.log
+<span class="nv">$InputFileTag</span>           nginx_access_log:
+<span class="nv">$InputFileStateFile</span>     nginx_access_log
+<span class="nv">$InputFileSeverity</span>      info
+<span class="nv">$InputFileFacility</span>      user
+<span class="nv">$InputRunFileMonitor</span>
+
+<span class="nv">$InputFileName</span>          /usr/local/nginx/logs/error.log
+<span class="nv">$InputFileTag</span>           nginx_error_log:
+<span class="nv">$InputFileStateFile</span>     nginx_error_log
+<span class="nv">$InputFileSeverity</span>      info
+<span class="nv">$InputFileFacility</span>      user
+<span class="nv">$InputRunFileMonitor</span>
+
+<span class="c"># lit le fichier de log toutes les deux secondes</span>
+<span class="nv">$InputFilePollingInterval</span> 2
+
+<span class="c">#envoie les logs en tcp a 192.168.1.15 port 1025</span>
+<span class="k">if</span> <span class="nv">$syslogtag</span> <span class="o">==</span> <span class="s1">&#39;nginx_access_log:&#39;</span> <span class="k">then</span> @@<span class="o">(</span>z9<span class="o">)</span>192.168.1.15:1025
+<span class="k">if</span> <span class="nv">$syslogtag</span> <span class="o">==</span> <span class="s1">&#39;nginx_error_log:&#39;</span> <span class="k">then</span> @@<span class="o">(</span>z9<span class="o">)</span>192.168.1.15:1025
+
+<span class="c">#ne log pas ce qui est taggé nginx (pour ne pas logger en double)</span>
+:syslogtag, contains, <span class="s2">&quot;nginx&quot;</span> ~
+</pre></div>
+
+
+<p>Sur le serveur qui recevra les logs, on s’assurera d’avoir au minimum
+ces directives dans /etc/rsyslog.conf (à personnaliser suivant votre
+configuration)</p>
+<div class="highlight"><pre><span class="nv">$FileOwner</span> logz
+<span class="nv">$FileGroup</span> log-prod
+
+<span class="nv">$CreateDirs</span> on
+<span class="nv">$FileCreateMode</span> 0640
+<span class="nv">$DirCreateMode</span> 0755
+<span class="nv">$Umask</span> 0022
+
+<span class="nv">$ModLoad</span> imtcp
+<span class="nv">$InputTCPServerRun</span> 1025
+<span class="nv">$AllowedSender</span> TCP, 127.0.0.1, 192.168.1.0/24
+</pre></div>
+
+
+<p>Puis on crée un fichier nginx.conf sous /etc/rsyslog.d/ :</p>
+<div class="highlight"><pre><span class="nv">$template</span> nginx_access_log,<span class="s2">&quot;/home/logz/remote/%$YEAR%/%$MONTH%/%$DAY%/%HOSTNAME%/nginx.access.log&quot;</span>
+<span class="nv">$template</span> nginx_error_log,<span class="s2">&quot;/home/logz/remote/%$YEAR%/%$MONTH%/%$DAY%/%HOSTNAME%/nginx.error.log&quot;</span>
+
+<span class="k">if</span> <span class="nv">$syslogtag</span> <span class="o">==</span> <span class="s1">&#39;nginx_access_log:&#39;</span>         <span class="k">then</span> ?nginx_access_log
+<span class="k">if</span> <span class="nv">$syslogtag</span> <span class="o">==</span> <span class="s1">&#39;nginx_access_log:&#39;</span>         <span class="k">then</span> ~
+
+<span class="k">if</span> <span class="nv">$syslogtag</span> <span class="o">==</span> <span class="s1">&#39;nginx_error_log:&#39;</span>                   <span class="k">then</span> ?nginx_error_log
+<span class="k">if</span> <span class="nv">$syslogtag</span> <span class="o">==</span> <span class="s1">&#39;nginx_error_log:&#39;</span>                   <span class="k">then</span> ~
+</pre></div>
+
+
+<p>Il suffit maintenant de reloader rsyslog sur les serveurs nginx et sur
+le « master » et magie, les logs de vos frontaux webs apparaitront dans
+le répertoire /home/logs/remote/.</p>
+<p>On peut aller encore beaucoup plus loin, comme envoyer les logs
+directement dans une base mysql, ou encore faire transiter les logs via
+un fichier fifo pour ne pas avoir à les écrire sur nos serveurs webs et
+économiser autant d’ios, ça se fait tout aussi facilement à partir de
+rsyslog sans trop d’efforts et avec un minimum d’efforts.</p>
+<p><strong>Mutualiser ses logs avec logstash, redis et Elasticsearch</strong></p>
+<p>La solution des hipsters, des vrais. Le gros avantage de jouer avec
+logstash c’est qu’on s’absout des contraintes liées au local*, on log
+donc ce qu’on veut.</p>
+<p>Dans l’exemple ci-dessous, on va parser les logs
+avec <a href="http://logstash.net/" title="logstash">logstash</a>, les envoyer sur une
+instance <a href="http://redis.io/" title="redis">redis</a>, et les manipuler
+avec <a href="http://www.elasticsearch.org/" title="Elasticsearch">Elasticsearch</a> avec
+une couche de <a href="http://three.kibana.org/" title="Kibana3">Kibana</a> comme web
+front end à Elasticsearch.</p>
+<p>Sur tous vos frontaux webs (après avoir installé l’openjdk, java
+oblige):</p>
+<div class="highlight"><pre>wget http://logstash.objects.dreamhost.com/release/logstash-1.1.13-flatjar.jar
+mkdir -p /usr/local/bin/logstash
+mv logstash-1.1.13-flatjar.jar /usr/local/bin/logstash/logstash.jar
+</pre></div>
+
+
+<div class="highlight"><pre>vi /etc/logstash.conf
+
+input <span class="o">{</span>
+ file <span class="o">{</span>
+ <span class="nb">type</span> <span class="o">=</span>&amp;gt; <span class="s2">&quot;nginx_access&quot;</span>
+ <span class="nv">path</span> <span class="o">=</span>&amp;gt; <span class="o">[</span><span class="s2">&quot;/usr/local/nginx/logs/access.log&quot;</span><span class="o">]</span>
+ <span class="nv">discover_interval</span> <span class="o">=</span>&amp;gt; 10
+ <span class="o">}</span>
+<span class="o">}</span>
+
+input <span class="o">{</span>
+ file <span class="o">{</span>
+ <span class="nb">type</span> <span class="o">=</span>&amp;gt; <span class="s2">&quot;nginx_error&quot;</span>
+ <span class="nv">path</span> <span class="o">=</span>&amp;gt; <span class="o">[</span><span class="s2">&quot;/usr/local/nginx/logs/error.log&quot;</span><span class="o">]</span>
+ <span class="nv">discover_interval</span> <span class="o">=</span>&amp;gt; 10
+ <span class="o">}</span>
+<span class="o">}</span>
+
+filter <span class="o">{</span>
+ grok <span class="o">{</span>
+ <span class="nb">type</span> <span class="o">=</span>&amp;gt; nginx_access
+ <span class="nv">pattern</span> <span class="o">=</span>&amp;gt; <span class="s2">&quot;%{COMBINEDAPACHELOG}&quot;</span>
+ <span class="o">}</span>
+<span class="o">}</span>
+
+filter <span class="o">{</span>
+ grok <span class="o">{</span>
+ <span class="nb">type</span> <span class="o">=</span>&amp;gt; nginx_error
+ <span class="nv">pattern</span> <span class="o">=</span>&amp;gt; <span class="s2">&quot;%{COMBINEDAPACHELOG}&quot;</span>
+ <span class="o">}</span>
+<span class="o">}</span>
+
+output <span class="o">{</span>
+ redis <span class="o">{</span> <span class="nv">host</span> <span class="o">=</span>&amp;gt; <span class="s2">&quot;10.17.9.12&quot;</span> <span class="nv">data_type</span> <span class="o">=</span>&amp;gt; <span class="s2">&quot;list&quot;</span> <span class="nv">key</span> <span class="o">=</span>&amp;gt; <span class="s2">&quot;logstash&quot;</span> <span class="o">}</span>
+<span class="o">}</span>
+</pre></div>
+
+
+<p>Puis hop, on lance logstash:</p>
+<div class="highlight"><pre>/usr/bin/java -jar /usr/local/bin/logstash/logstash.jar agent -f /etc/logstash.conf -w 1
+</pre></div>
+
+
+<p>Je vous conseille d’écrire un script d’init ou d’en récupérer un.</p>
+<p>Rendez-vous ensuite sur le serveur qui accueillera vos logs, et on
+installe <a href="http://www.elasticsearch.org/" title="elasticsearch">elasticsearch</a>:</p>
+<div class="highlight"><pre>wget https://download.elasticsearch.org/elasticsearch/elasticsearch/elasticsearch-0.90.1.zip
+unzip elasticsearch-0.90.1.zip
+rm -rf elasticsearch-0.90.1.zip
+mv elasticsearch-0.90.1 elasticsearch
+sudo mv elasticsearch /usr/local/share
+<span class="nb">cd</span> /usr/local/share
+sudo chmod 755 elasticsearch
+<span class="nb">cd</span> <span class="nv">$HOME</span>
+curl -L http://github.com/elasticsearch/elasticsearch-servicewrapper/tarball/master | tar -xz
+mv *servicewrapper*/service /usr/local/share/elasticsearch/bin/
+rm -Rf *servicewrapper*
+/usr/local/share/elasticsearch/bin/service/elasticsearch install
+</pre></div>
+
+
+<p>On installe ensuite Redis (un simple apt-get install redis-server
+suffit).</p>
+<p>Puis installation de logstash et on renseigne le fichier de conf:</p>
+<div class="highlight"><pre>input <span class="o">{</span>
+ redis <span class="o">{</span>
+ <span class="nv">host</span> <span class="o">=</span>&amp;gt; <span class="s2">&quot;127.0.0.1&quot;</span>
+ <span class="nv">port</span> <span class="o">=</span>&amp;gt; 6379
+ <span class="nb">type</span> <span class="o">=</span>&amp;gt; <span class="s2">&quot;redis-input&quot;</span>
+ <span class="nv">data_type</span> <span class="o">=</span>&amp;gt; <span class="s2">&quot;list&quot;</span>
+ <span class="nv">key</span> <span class="o">=</span>&amp;gt; <span class="s2">&quot;logstash&quot;</span>
+ <span class="nv">format</span> <span class="o">=</span>&amp;gt; <span class="s2">&quot;json_event&quot;</span>
+ <span class="o">}</span>
+<span class="o">}</span>
+output <span class="o">{</span>
+ elasticsearch <span class="o">{</span>
+ <span class="nv">host</span> <span class="o">=</span>&amp;gt; <span class="s2">&quot;10.17.9.12&quot;</span>
+ <span class="o">}</span>
+<span class="o">}</span>
+</pre></div>
+
+
+<p>Et comme on est trop des hipsters, on
+installe <a href="http://three.kibana.org/intro.html" title="Kibana3">Kibana3</a> qui va
+nous permettre de taper notre ES comme des swags.</p>
+<p>Si vous avez bien tout suivi, vous aurez accès à un joli dashboard très
+pratique.</p>
+            </div><!-- /.entry-content -->
+
+
+        </div><!-- /.eleven.columns -->
+
+<div class="three columns">
+
+<h4>Pages</h4>
+
+ <ul>
+      <li><a href="http://cyrilb.me/pages/about.html">About</a></li>
+  </ul>
+
+<h4>Categories</h4>
+<ul>
+		<li><a href="http://cyrilb.me/category/haproxy.html">haproxy</a></li>
+		<li><a href="http://cyrilb.me/category/haproxy-infra-linux-nginx.html">haproxy, infra, linux, nginx</a></li>
+		<li><a href="http://cyrilb.me/category/linux.html">linux</a></li>
+		<li><a href="http://cyrilb.me/category/linux-nginx.html">linux, nginx</a></li>
+		<li><a href="http://cyrilb.me/category/nginx.html">nginx</a></li>
+</ul>
+
+
+<h4>Tags</h4>
+	<ul>
+	    <li class="tag-1"><a href="http://cyrilb.me/tag/haproxy.html">haproxy</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/aria2c.html">aria2c</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/acl.html">acl</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/locale.html">locale</a></li>
+	    <li class="tag-1"><a href="http://cyrilb.me/tag/linux.html">linux</a></li>
+	    <li class="tag-2"><a href="http://cyrilb.me/tag/logs.html">logs</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/curl.html">curl</a></li>
+	    <li class="tag-1"><a href="http://cyrilb.me/tag/nginx.html">nginx</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/workers.html">workers</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/logstash.html">logstash</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/wget.html">wget</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/headers.html">headers</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/infra.html">infra</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/iostat.html">iostat</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/kibana.html">kibana</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/rsyslog.html">rsyslog</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/hdparm.html">hdparm</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/process.html">process</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/syslog.html">syslog</a></li>
+</ul>
+
+
+
+</div> </div><!-- /.row -->
+
+
+</section>
+
+       </div><!-- /.row -->
+    </div><!-- /.container -->
+
+
+       <div class="container.nopad bg">
+
+    
+        <footer id="credits" class="row">
+          <div class="seven columns left-center">
+
+                   <address id="about" class="vcard body">
+                    Proudly powered by <a href="http://getpelican.com/">Pelican</a>,
+                    which takes great advantage of <a href="http://python.org">Python</a>.
+                    <br />
+                    Based on the <a target="_blank" href="http://gumbyframework.com">Gumby Framework</a>
+                    </address>
+          </div>
+
+
+          <div class="seven columns">
+            <div class="row">
+              <ul class="socbtns">
+
+                <li><div class="btn primary"><a href="https://github.com/cdarylb" target="_blank">Github</a></div></li>
+
+                <li><div class="btn twitter"><a href="https://twitter.com/cdarylb" target="_blank">Twitter</a></div></li>
+
+                <li><div class="btn facebook"><a href="https://www.facebook.com/cyril.beaufrere" target="_blank">Facebook</a></div></li>
+
+
+              </ul>
+            </div>
+          </div>
+        </footer>
+
+    </div>
+
+
+  <script src="http://cyrilb.me/theme/js/libs/jquery-1.9.1.min.js"></script>
+  <script src="http://cyrilb.me/theme/js/libs/gumby.min.js"></script>
+  <script src="http://cyrilb.me/theme/js/plugins.js"></script>
+</body>
+</html>

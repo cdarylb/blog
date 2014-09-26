@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Trajectoires d'un admin</title><link href="http://cyrilb.me/" rel="alternate"></link><link href="http://cyrilb.me/feeds/nginx.atom.xml" rel="self"></link><id>http://cyrilb.me/</id><updated>2012-07-18T11:20:00+02:00</updated><entry><title>Modifier les servers headers sur nginx</title><link href="http://cyrilb.me/modifier-les-servers-headers-sur-nginx.html" rel="alternate"></link><updated>2012-07-18T11:20:00+02:00</updated><author><name>cyrilb</name></author><id>tag:cyrilb.me,2012-07-18:modifier-les-servers-headers-sur-nginx.html</id><summary type="html">&lt;p&gt;Nginx est à la fois un serveur HTTP et un reverse proxy. Pour ceux qui
+ne connaissent pas, je leur conseille de l’essayer sans tarder tant il
+s’avère robuste et souple (les fichiers de configuration sont un vrai
+régal pour qui vient d’Apache et sa relative lourdeur). C’est bien
+simple, à requêtes égales, nginx consomme beaucoup moins de processeur
+et de mémoire. L’essayer c’est l’adopter.&lt;br /&gt;
+Nous allons aujourd’hui aborder une petite astuce très simples à mettre
+en place sur Nginx en moins de trente secondes.&lt;/p&gt;
+&lt;p&gt;Modifier les servers header de nginx, afin qu’un curl par exemple nous
+retourne un « Server : Plop » plutôt qu’un « Server : Nginx ». A quoi ça
+sert? Surtout à éviter les scripts-kiddies qui se basent sur les headers
+afin d’exploiter des failles ou autre, et de rester discret si vous le
+souhaitez sur la technologie utilisée pour propulser votre serveur web.
+Et puis c’est toujours classe de renvoyer des headers bien
+personnalisés.&lt;/p&gt;
+&lt;p&gt;Je me base sur la version actuelle stable de nginx pour ces exemples,
+soit la release 1.2.2.&lt;/p&gt;
+&lt;p&gt;​1. Téléchargez les sources sur le site officiel.&lt;/p&gt;
+&lt;p&gt;​2. Décompressez où vous voulez (suivant votre sens plus ou moins
+développé du FHS).&lt;/p&gt;
+&lt;p&gt;​3. Editez avec votre éditeur favori le fichier
+src/http/ngx_http_header_filter_module.c&lt;/p&gt;
+&lt;p&gt;​4. Modifiez la réponse des lignes 49 et 50 :&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;static char ngx&lt;span class="se"&gt;\_&lt;/span&gt;http&lt;span class="se"&gt;\_&lt;/span&gt;server&lt;span class="se"&gt;\_&lt;/span&gt;string&lt;span class="o"&gt;[]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;Server: nginx&amp;quot;&lt;/span&gt; CRLF;  
+static char ngx&lt;span class="se"&gt;\_&lt;/span&gt;http&lt;span class="se"&gt;\_&lt;/span&gt;server&lt;span class="se"&gt;\_&lt;/span&gt;full&lt;span class="se"&gt;\_&lt;/span&gt;string&lt;span class="o"&gt;[]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;Server: &amp;quot;&lt;/span&gt; NGINX&lt;span class="se"&gt;\_&lt;/span&gt;VER CRLF;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;​5. Sauvegardez, puis compilez avec les options de votre choix, lancez
+nginx, puis vérifiez vos headers avec un curl -I http://www.monsite.com/
+par exemple. Enjoy, cela vous a pris 30 secondes.&lt;/p&gt;</summary><category term="headers"></category><category term="nginx"></category></entry></feed>

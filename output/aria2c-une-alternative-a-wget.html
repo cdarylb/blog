@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+
+        <title>Aria2c, une alternative à Wget</title>
+        <meta charset="utf-8" />
+        <link href="http://cyrilb.me/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Trajectoires d'un admin Full Atom Feed" />
+        <link href="http://cyrilb.me/feeds/linux.atom.xml" type="application/atom+xml" rel="alternate" title="Trajectoires d'un admin Categories Atom Feed" />
+
+
+        <!-- Mobile viewport optimized: j.mp/bplateviewport -->
+        <meta name="viewport" content="width=device-width,initial-scale=1, maximum-scale=1">
+
+        <link rel="stylesheet" type="text/css" href="http://cyrilb.me/theme/gumby.css" />
+        <link rel="stylesheet" type="text/css" href="http://cyrilb.me/theme/style.css" />
+        <link rel="stylesheet" type="text/css" href="http://cyrilb.me/theme/pygment.css" />
+
+        <script src="http://cyrilb.me/theme/js/libs/modernizr-2.6.2.min.js"></script>
+
+
+
+
+</head>
+
+<body id="index" class="home">
+
+
+    <div class="container">
+
+        <div class="row">
+
+          <header id="banner" class="body">
+                  <h1><a href="http://cyrilb.me/">Trajectoires d'un admin <strong></strong></a></h1>
+          </header><!-- /#banner -->
+
+            <div id="navigation" class="navbar row">
+              <a href="#" gumby-trigger="#navigation &gt; ul" class="toggle"><i class="icon-menu"></i></a>
+             
+              <ul class="columns">
+                <li><a href="http://cyrilb.me/">Home</a></li>
+
+                <li><a href="http://cyrilb.me/pages/about.html">About</a></li>
+
+              </ul>
+            </div>
+
+<section id="content" class="body">
+
+   <div class="row">
+        <div class="eleven columns">
+
+
+            <header>
+              <h2 class="entry-title">
+                <a href="http://cyrilb.me/aria2c-une-alternative-a-wget.html" rel="bookmark"
+                   title="Permalink to Aria2c, une alternative à Wget">Aria2c, une alternative à Wget</a></h2>
+           
+            </header>
+            <footer class="post-info">
+              <abbr class="published" title="2013-03-12T15:59:00">
+                mar. 12 mars 2013
+              </abbr>
+              <address class="vcard author">
+                By <a class="url fn" href="http://cyrilb.me/author/cyrilb.html">cyrilb</a>
+              </address>
+            </footer><!-- /.post-info -->
+            <div class="entry-content">
+              <p>Je me sers pratiquement tous les jours de wget ou de curl, que ce soit
+pour downloader un fichier quelconque, pour rapatrier et analyser mes
+headers ou tester les performances de certaines parties de mon site.</p>
+<p>Je ne parle même pas du nombre de mes scripts qui se servent de curl ou
+de wget, bref, impossible de m’en passer, d’autant plus que ces outils
+ont l’avantage d’être installé de base sur la plupart des distributions
+Linux actuelles.</p>
+<p>J’ai néanmoins découvert récemment Aria2, un outil suffisamment sympa
+qui gère le download multi-protocoles (http, ftp, bittorent, etc)… et
+qui fourmille d’options que je vais vous faire découvrir ici, du moins
+celles qui m’ont servies cette semaine:</p>
+<p>Le download d’un fichier bittorrent qu’on met en mémoire:</p>
+<div class="highlight"><pre>cyril@hoth:~<span class="nv">$ </span>aria2c --follow-torrent<span class="o">=</span>mem http://slackware.com/torrents/slackware-14.0-install-dvd.torrent
+</pre></div>
+
+
+<p>Voici l’output tronqué pour les curieux:</p>
+<div class="highlight"><pre><span class="se">\#</span>2 SIZE:177.4MiB/2,345.4MiB<span class="o">(</span>7%<span class="o">)</span> CN:55 SEED:49 SPD:7.5MiBs
+UP:66.4KiBs<span class="o">(</span>1.9MiB<span class="o">)</span> ETA:4m48s<span class="o">]</span>
+</pre></div>
+
+
+<p>Le download de base, avec un fichier de sortie pour les erreurs:</p>
+<div class="highlight"><pre>cyril@hoth:~<span class="nv">$ </span>aria2c --save-session<span class="o">=</span>output.log http://mirrors.slackware.com/slackware-iso/slackware64-14.0-iso/slackware64-14.0-install-dvd.iso
+</pre></div>
+
+
+<p>Le download avec plusieurs sources, le download est donc plus rapide:</p>
+<div class="highlight"><pre>cyril@hoth:~<span class="nv">$ </span>aria2c -x 2 http://mirrors.slackware.com/slackware-iso/slackware64-14.0-iso/slackware64-14.0-install-dvd.iso
+</pre></div>
+
+
+<p>Le download de la même image depuis plusieurs sources (ftp et http):</p>
+<div class="highlight"><pre>cyril@hoth:~<span class="nv">$ </span>aria2c -x 2 http://mirrors.slackware.com/slackware-iso/slackware64-14.0-iso/slackware64-14.0-install-dvd.iso ftp://mirrors.slackware.com/slackware-iso/slackware64-14.0-iso/slackware64-14.0-install-dvd.iso
+</pre></div>
+
+
+<p>Le download de fichiers contenus dans un fichier quelconque, avec une
+concurrence de 10 et avec une sortie:</p>
+<div class="highlight"><pre>cyril@lb2:~<span class="nv">$ </span>aria2c -istuff.txt -j10 --save-session<span class="o">=</span>output.log
+</pre></div>
+
+
+<p>Qui nous permettra un joli resume si ça plante grâce à un:</p>
+<div class="highlight"><pre>cyril@hoth:~<span class="nv">$ </span>aria2c -ioutput.log
+</pre></div>
+
+
+<p>Bien sûr la séquence de download sera restaurée automatiquement après un
+CTRL-C et aria2 gère même IPV6, que demander de plus.</p>
+            </div><!-- /.entry-content -->
+
+
+        </div><!-- /.eleven.columns -->
+
+<div class="three columns">
+
+<h4>Pages</h4>
+
+ <ul>
+      <li><a href="http://cyrilb.me/pages/about.html">About</a></li>
+  </ul>
+
+<h4>Categories</h4>
+<ul>
+		<li><a href="http://cyrilb.me/category/haproxy.html">haproxy</a></li>
+		<li><a href="http://cyrilb.me/category/haproxy-infra-linux-nginx.html">haproxy, infra, linux, nginx</a></li>
+		<li><a href="http://cyrilb.me/category/linux.html">linux</a></li>
+		<li><a href="http://cyrilb.me/category/linux-nginx.html">linux, nginx</a></li>
+		<li><a href="http://cyrilb.me/category/nginx.html">nginx</a></li>
+</ul>
+
+
+<h4>Tags</h4>
+	<ul>
+	    <li class="tag-1"><a href="http://cyrilb.me/tag/haproxy.html">haproxy</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/aria2c.html">aria2c</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/acl.html">acl</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/locale.html">locale</a></li>
+	    <li class="tag-1"><a href="http://cyrilb.me/tag/linux.html">linux</a></li>
+	    <li class="tag-2"><a href="http://cyrilb.me/tag/logs.html">logs</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/curl.html">curl</a></li>
+	    <li class="tag-1"><a href="http://cyrilb.me/tag/nginx.html">nginx</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/workers.html">workers</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/logstash.html">logstash</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/wget.html">wget</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/headers.html">headers</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/infra.html">infra</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/iostat.html">iostat</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/kibana.html">kibana</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/rsyslog.html">rsyslog</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/hdparm.html">hdparm</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/process.html">process</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/syslog.html">syslog</a></li>
+</ul>
+
+
+
+</div> </div><!-- /.row -->
+
+
+</section>
+
+       </div><!-- /.row -->
+    </div><!-- /.container -->
+
+
+       <div class="container.nopad bg">
+
+    
+        <footer id="credits" class="row">
+          <div class="seven columns left-center">
+
+                   <address id="about" class="vcard body">
+                    Proudly powered by <a href="http://getpelican.com/">Pelican</a>,
+                    which takes great advantage of <a href="http://python.org">Python</a>.
+                    <br />
+                    Based on the <a target="_blank" href="http://gumbyframework.com">Gumby Framework</a>
+                    </address>
+          </div>
+
+
+          <div class="seven columns">
+            <div class="row">
+              <ul class="socbtns">
+
+                <li><div class="btn primary"><a href="https://github.com/cdarylb" target="_blank">Github</a></div></li>
+
+                <li><div class="btn twitter"><a href="https://twitter.com/cdarylb" target="_blank">Twitter</a></div></li>
+
+                <li><div class="btn facebook"><a href="https://www.facebook.com/cyril.beaufrere" target="_blank">Facebook</a></div></li>
+
+
+              </ul>
+            </div>
+          </div>
+        </footer>
+
+    </div>
+
+
+  <script src="http://cyrilb.me/theme/js/libs/jquery-1.9.1.min.js"></script>
+  <script src="http://cyrilb.me/theme/js/libs/gumby.min.js"></script>
+  <script src="http://cyrilb.me/theme/js/plugins.js"></script>
+</body>
+</html>

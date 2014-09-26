@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+
+        <title>Infrastructure de FamiHero Partie 1</title>
+        <meta charset="utf-8" />
+        <link href="http://cyrilb.me/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="Trajectoires d'un admin Full Atom Feed" />
+        <link href="http://cyrilb.me/feeds/haproxy-infra-linux-nginx.atom.xml" type="application/atom+xml" rel="alternate" title="Trajectoires d'un admin Categories Atom Feed" />
+
+
+        <!-- Mobile viewport optimized: j.mp/bplateviewport -->
+        <meta name="viewport" content="width=device-width,initial-scale=1, maximum-scale=1">
+
+        <link rel="stylesheet" type="text/css" href="http://cyrilb.me/theme/gumby.css" />
+        <link rel="stylesheet" type="text/css" href="http://cyrilb.me/theme/style.css" />
+        <link rel="stylesheet" type="text/css" href="http://cyrilb.me/theme/pygment.css" />
+
+        <script src="http://cyrilb.me/theme/js/libs/modernizr-2.6.2.min.js"></script>
+
+
+
+
+</head>
+
+<body id="index" class="home">
+
+
+    <div class="container">
+
+        <div class="row">
+
+          <header id="banner" class="body">
+                  <h1><a href="http://cyrilb.me/">Trajectoires d'un admin <strong></strong></a></h1>
+          </header><!-- /#banner -->
+
+            <div id="navigation" class="navbar row">
+              <a href="#" gumby-trigger="#navigation &gt; ul" class="toggle"><i class="icon-menu"></i></a>
+             
+              <ul class="columns">
+                <li><a href="http://cyrilb.me/">Home</a></li>
+
+                <li><a href="http://cyrilb.me/pages/about.html">About</a></li>
+
+              </ul>
+            </div>
+
+<section id="content" class="body">
+
+   <div class="row">
+        <div class="eleven columns">
+
+
+            <header>
+              <h2 class="entry-title">
+                <a href="http://cyrilb.me/45.html" rel="bookmark"
+                   title="Permalink to Infrastructure de FamiHero Partie 1">Infrastructure de FamiHero Partie 1</a></h2>
+           
+            </header>
+            <footer class="post-info">
+              <abbr class="published" title="2013-04-15T10:02:00">
+                lun. 15 avril 2013
+              </abbr>
+              <address class="vcard author">
+                By <a class="url fn" href="http://cyrilb.me/author/cyrilb.html">cyrilb</a>
+              </address>
+            </footer><!-- /.post-info -->
+            <div class="entry-content">
+              <p>Mettre en place une infrastructure, ça peut faire peur. Par où
+commencer? Avec quelles briques? De quoi ai-je vraiment besoin? Et si je
+testais le dernier système de cache à la mode?</p>
+<p>J’ai compris que je m’éparpillais trop, je suis donc revenu aux
+basiques, grâce au conseil tout simple d’un ancien collègue: « Fais ce
+que tu sais faire ». A partir de là, ça a été un jeu d’enfants, et j’ai
+compris que ça m’aurait pris un temps fou d’acquérir de nouvelles
+compétences sur des sujets que je ne maitrisais pas du tout, et que mon
+expérience était largement suffisante pour mettre en place une
+architecture telle que je les aime:</p>
+<p><strong><em>- Entièrement Scalable</em></strong></p>
+<p><strong><em>- Hautement disponible</em></strong></p>
+<p><strong><em>- KISS (Keep It Simple Stupid)</em></strong></p>
+<p>Le but de ce post est de vous faire partager la mise en place de
+l’infrastructure chez FamiHero, de manière pragmatique, sans trop
+rentrer dans le détail en général mais en approfondissant certains
+points. Je pense que certains vieux admins, bien plus compétents que
+moi, souriront devant la naïveté de certains passages, mais j’aime
+imaginer que cela pourra rendre service à certains admins junior.</p>
+<p><strong>1. L’infrastructure en elle même, première partie</strong></p>
+<p><strong><br />
+</strong>Comme vous pouvez le constater, c’est du grand classique, qui n’a pas
+le mérite d’innover, mais de répondre à mes besoins. On va se concentrer
+sur le load-balancing qui va aller taper nos frontaux pour commencer.</p>
+<p><strong>2. Load Balancers et ip flottante</strong></p>
+<p>Si on met de côté les load-balancers de type hard (Cisco, f5, etc), je
+ne connais que trois solutions qui font le travail:</p>
+<p><strong>- Varnish</strong></p>
+<p>Varnish a des possibilités vraiment intéressantes pour faire du load
+balancing grâce à un système de backends vraiment simples à gérer. On y
+retrouve du très courants avec des priorités, des poids, des health
+check etc… Le soucis, c’est que c’est avant tout un formidable système
+de cache, et que je préfère l’utiliser pour sa fonction première, le
+cache, qui a du faire preuve de plus d’attention par ses développeurs.</p>
+<p><strong>- Nginx</strong></p>
+<p>Nginx, non content d’être un excellent serveur web, peut aussi
+s’ennorgueuilir d’être un excellent load balancer qui fonctionne à
+merveille. On verra un peu plus loin que je m’en sers pour faire un peu
+de proxy-pass.</p>
+<p><strong>- Haproxy</strong></p>
+<p>La Rolls Royce des loads balancers. Mon choix s’est bien sûr porté sur
+lui parce que je m’en suis déjà servi pas mal de temps chez Twenga; je
+sais donc qu’il répond à mes besoins et qu’il a des milliers d’options
+super sympas.</p>
+<p>On commence par récupérer les sources. La version stable actuelle est la
+1.4.22 mais pour ma part je suis sur la branche de développement, la
+1.5.*. Suivez avec attention la mailling-list de haproxy, elle regorge
+de détails pratiques sur les branches en développement. L’intérêt de la
+branche 1.5 est qu’elle embarque l’offloading en SSL, on y reviendra un
+peu plus loin.</p>
+<p><strong>Récupération des sources et installation</strong></p>
+<div class="highlight"><pre>cyril@lb2:~<span class="nv">$ </span><span class="nb">cd</span> /usr/local/src/
+cyril@lb2:/usr/local/src<span class="nv">$ </span>sudo apt-get install make gcc libpcre3-dev libssl-dev
+cyril@lb2:/usr/local/src<span class="nv">$ </span>wget http://haproxy.1wt.eu/download/1.5/src/snapshot/haproxy-ss-20120905.tar.gz
+cyril@lb2:/usr/local/src<span class="nv">$ </span>tar xfz haproxy-ss-20120905.tar.gz
+cyril@lb2:/usr/local/src<span class="nv">$ </span><span class="nb">cd </span>haproxy-ss-20120905/
+cyril@lb2:/usr/local/src<span class="nv">$ </span>make <span class="nv">TARGET</span><span class="o">=</span>linux2628 <span class="nv">USE_STATIC_PCRE</span><span class="o">=</span>1 <span class="nv">USE_OPENSSL</span><span class="o">=</span>1
+cyril@lb2:/usr/local/src<span class="nv">$ </span>sudo make <span class="nv">PREFIX</span><span class="o">=</span>/opt/haproxy-ssl install
+</pre></div>
+
+
+<p><strong>Configuration de Haproxy</strong></p>
+<p><strong><br />
+</strong>On commence par ajouter l’utilisateur qui lancera haproxy. Choisissez
+un nom le moins générique possible.</p>
+<div class="highlight"><pre>cyril@lb2:~<span class="nv">$ </span>sudo useradd bingoha
+</pre></div>
+
+
+<p>Dans le répertoire examples vous trouverez un haproxy.cfg. A vous de
+construire le vôtre suivant vos besoins. Pour moi au final ça donne ça:</p>
+<div class="highlight"><pre>global
+<span class="c"># On renvoit info/notice vers syslog, je reviendrai un peu plus loin sur la configuration des logs haproxy avec rsyslog.</span>
+log /dev/log local0 info
+log /dev/log local0 notice
+<span class="c"># Total de connexions simultanées en concurrence </span>
+maxconn 20000
+<span class="c">#L&#39;utilisateur et le groupe qui lance haproxy</span>
+user bingoha
+group bingoha
+<span class="c"># Création d&#39;un socket unix en mode stream, me permet de chopper plein d&#39;informations, voir plus loin.</span>
+stats socket /var/run/haproxy.stat level admin
+<span class="c"># Un mec pas commode</span>
+daemon
+
+defaults
+<span class="c"># Protocole par défaut de l&#39;instance</span>
+mode http
+<span class="c"># Log par défaut, le log est émis dés qu&#39;une connexion est initiée</span>
+log global
+<span class="c"># Renvoie une 503 ou une 504 si la connexion au serveur n&#39;a pas abouti</span>
+timeout connect 5s
+<span class="c"># Temps maximum d&#39;inactivité côté client</span>
+timeout client 20s
+<span class="c"># Temps maximum d&#39;inactivité côté serveur</span>
+timeout server 15s
+<span class="c"># Un check additionnel du timeout, mais apres qu&#39;une connexion ait déjà été établie.</span>
+timeout check 2s
+<span class="c"># Temps maximum alloué pour attendre une nouvelle connexion http</span>
+timeout http-keep-alive 1s
+<span class="c"># Temps maximum alloué pour attendre une requête http complète, on peut s&#39;en servir comme protection contre les slowloris</span>
+timeout http-request 50s
+
+<span class="c"># L&#39;interface web de management</span>
+listen web-mgt
+<span class="nb">bind </span>78.109.93.62:8089
+<span class="c"># Aucun intérêt de logger les connexions sans erreur</span>
+option dontlog-normal
+mode http
+stats uri /haproxy
+<span class="c"># On &quot;protège l&#39;accès à l&#39;interface par un user/password</span>
+stats realm STATS_WEB
+stats auth admin:4nth0nIB4uG|l
+<span class="c"># Refresh des stats toutes les 15 secondes</span>
+stats refresh 15s
+
+<span class="c"># Notre frontend</span>
+frontend http-in
+<span class="c"># Ecoute sur le port 80</span>
+<span class="nb">bind</span> *:80
+<span class="c"># Activation des logs sur les requêtes et les sessions</span>
+option httplog
+<span class="c"># insertion du header X-Forwarded-For header aux requêtes envoyées aux serveurs</span>
+option forwardfor
+<span class="c"># Active la fermeture des connexions côté serveur</span>
+option http-server-close
+<span class="c"># C&#39;est grâce à cette ligne qu&#39;on peut offloader en https, je reviens dessus plus loin</span>
+<span class="c">#bind *:443 ssl crt /etc/stunnel/certifami/famihero.pem nosslv3 prefer-server-ciphers ciphers RC4-SHA:AES128-SHA:AES256-SHA</span>
+
+<span class="c"># Acl basique, tout ce qui commence par mon. ou man. est dirigé vers un backend sépcial</span>
+acl acl_others hdr_beg<span class="o">(</span>host<span class="o">)</span> -i mon. man.
+use_backend www.famihero.others <span class="k">if </span>acl_others
+
+<span class="c"># Même chose qu&#39;en haut, mais sur un autre backend</span>
+acl acl_vhosts hdr_beg<span class="o">(</span>host<span class="o">)</span> -i devil. dev1. dev2. ppdev1. ppdev2. sandbox.
+use_backend www.vhosts.dev <span class="k">if </span>acl_vhosts
+
+<span class="c"># Acl basique, sert surtout de default_backend en fait</span>
+acl acl_prod hdr_end famihero.com famihero.com. zenanny.com zenanny.com.
+use_backend www.famihero.com <span class="k">if </span>acl_prod
+
+default_backend www.famihero.com
+
+<span class="c"># Le nom du backend</span>
+backend www.famihero.com
+<span class="c"># L&#39;algo de load balancing du backend</span>
+balance roundrobin
+<span class="c"># Insertion d&#39;un cookie</span>
+cookie fami insert indirect nocache domain .famihero.com
+<span class="c"># Check server health en mode http sur ce fichier (on peut tres bien utiliser un GET à la place du HEAD)</span>
+option httpchk HEAD /haproxytest.txt HTTP/1.0
+<span class="c"># Mes serveurs web. Un check toutes les 2 secondes et on etime qu&#39;ils sont morts apres 2x2 secondes d&#39;uncheck</span>
+server web1 192.168.2.3:80 check inter 2000 fall 2
+server web2 192.168.2.4:80 check inter 2000 fall 2
+server web3 192.168.2.5:80 check inter 2000 fall 2
+server web4 192.168.2.13:80 check inter 2000 fall 2
+<span class="c"># Le trafic est redirigé sur ce serveur web si tous les autres serveurs ne répondent plus grâce au mode backup</span>
+server maintenance 127.0.0.1:8787 backup
+<span class="c"># Active la redistribution de session en cas de perte de connexion sur un serveur</span>
+option redispatch
+<span class="c"># Utile en cas de grosse charge, permet de dropper les requêtes avortées pour qu&#39;elles ne s&#39;empilent pas</span>
+option abortonclose
+<span class="c"># Supprime des headers l&#39;ip des webs</span>
+rspidel ^Set-cookie:<span class="se">\ </span><span class="nv">IP</span><span class="o">=</span>
+
+backend www.famihero.others
+server mon 192.168.2.12:80
+
+backend www.vhosts.dev
+server web3 192.168.2.5:8687
+option http-server-close
+option forwardfor
+option abortonclose
+
+<span class="c"># Un autre backend, celui-ci fonctionne en mode tcp</span>
+listen services
+<span class="nb">bind</span> *:7879
+mode tcp
+server lead3-vp.famihero.com 192.168.2.5:7879
+</pre></div>
+
+
+<p><strong>Quelques scripts, tips and tricks.</strong></p>
+<p>Voici un script que j’ai écrit pour rentrer et sortir des serveurs du
+proxy. Il est vraiment tout bête mais je m’en sers tous les jours. Il
+faudra que je trouve le temps de l’améliorer, genre rajouter une
+fonction sur les stats de trafic, etc… Il est très facilement adaptable,
+libre à vous de l’améliorer bien sûr. Vous pouvez le télécharger ICI ou
+le parcourir ci-dessous:</p>
+<div class="highlight"><pre>    <span class="c">#!/bin/bash</span>
+
+    <span class="c">#set -e</span>
+
+    <span class="nv">WEBSERVER</span><span class="o">=</span><span class="s2">&quot;$2&quot;</span>
+    <span class="nv">SOCQUETTE</span><span class="o">=</span><span class="s2">&quot;socat unix-connect:/var/run/haproxy.stat stdio&quot;</span>
+    <span class="nv">SERVERS</span><span class="o">=</span><span class="s2">&quot;web1 web2 web3 web4&quot;</span>
+    <span class="nv">BACKEND</span><span class="o">=</span><span class="s2">&quot;www.famihero.com&quot;</span>
+    <span class="nv">VERT</span><span class="o">=</span><span class="s2">&quot;\\033[1;32m&quot;</span>
+    <span class="nv">ROUGE</span><span class="o">=</span><span class="s2">&quot;\\033[1;31m&quot;</span>
+    <span class="nv">NORMAL</span><span class="o">=</span><span class="s2">&quot;\\033[0;39m&quot;</span>
+
+    print_help<span class="o">()</span> <span class="o">{</span>
+    cat &amp;lt;&amp;lt; EOF
+
+    Script to manage servers in HaProxy - Read README.TXT
+    Copyright <span class="o">(</span>c<span class="o">)</span> Cyril Beaufrere 
+    Version: 0.7
+    Last Modified: 10 Mars 2013
+    License: This software can be used <span class="k">for </span>free unless I meet you, <span class="k">then </span>you owe me lunch.
+
+    Usage: wwwcluster.sh -d| -e| -a| -h| -m| -s <span class="o">[</span>webserver<span class="o">]</span>
+
+    Options:
+
+    -d <span class="o">[</span>webserver<span class="o">]</span>: To disable server
+    -e <span class="o">[</span>webserver<span class="o">]</span>: To <span class="nb">enable </span>server
+    -a: Enable all servers
+    -h: This stupid <span class="nb">help</span>
+    -m: Disable all servers <span class="o">(</span>maintenance mode<span class="o">)</span>
+    -s: Show status of all web servers
+
+    EOF
+            <span class="o">}</span>
+
+
+    disable_server <span class="o">()</span> <span class="o">{</span>
+    <span class="nb">echo</span> -e <span class="s2">&quot;$ROUGE&quot;&quot;---------------------------------- &quot;</span> <span class="s2">&quot;$NORMAL&quot;</span>
+    <span class="nb">echo</span> <span class="s2">&quot;Do you want to disable $WEBSERVER? (y/n)&quot;</span>
+    <span class="nb">echo</span> -e <span class="s2">&quot;$ROUGE&quot;&quot;---------------------------------- &quot;</span> <span class="s2">&quot;$NORMAL&quot;</span>
+    <span class="nb">read </span>reponse
+     <span class="k">if</span> <span class="o">[[</span> <span class="nv">$reponse</span> <span class="o">==</span> <span class="s2">&quot;y&quot;</span> <span class="o">]]</span>
+     <span class="k">then </span><span class="nb">echo </span>disable server <span class="nv">$BACKEND</span>/<span class="nv">$WEBSERVER</span> | <span class="nv">$SOCQUETTE</span>
+     sleep 2
+     <span class="nb">echo </span>show stat | <span class="nv">$SOCQUETTE</span>  | grep <span class="nv">$WEBSERVER</span> | grep -v check | awk -F<span class="s1">&#39;[,|]&#39;</span> <span class="s1">&#39;{print $2 &quot; ===&amp;gt; &quot;$18}&#39;</span> <span class="nv">OFS</span><span class="o">=</span><span class="s2">&quot;,&quot;</span>
+    <span class="k">fi</span>
+<span class="k">     if</span> <span class="o">[[</span> <span class="nv">$reponse</span> <span class="o">==</span> <span class="s2">&quot;n&quot;</span> <span class="o">]]</span>
+     <span class="k">then </span><span class="nb">echo</span> <span class="s2">&quot;###Leaving###&quot;</span>
+    <span class="k">fi</span>
+    <span class="o">}</span>
+
+
+    enable_server <span class="o">()</span> <span class="o">{</span>
+    <span class="nb">echo</span> -e <span class="s2">&quot;$VERT&quot;&quot;---------------------------------- &quot;</span> <span class="s2">&quot;$NORMAL&quot;</span>
+    <span class="nb">echo</span> <span class="s2">&quot;Do you want to enable $WEBSERVER? (y/n)&quot;</span>
+    <span class="nb">echo</span> -e <span class="s2">&quot;$VERT&quot;&quot;---------------------------------- &quot;</span> <span class="s2">&quot;$NORMAL&quot;</span>
+    <span class="nb">read </span>reponse
+     <span class="k">if</span> <span class="o">[[</span> <span class="nv">$reponse</span> <span class="o">==</span> <span class="s2">&quot;y&quot;</span> <span class="o">]]</span>
+     <span class="k">then </span><span class="nb">echo enable </span>server <span class="nv">$BACKEND</span>/<span class="nv">$WEBSERVER</span> | <span class="nv">$SOCQUETTE</span>
+     sleep 2
+     <span class="nb">echo</span> -e show stat | <span class="nv">$SOCQUETTE</span> | grep <span class="nv">$WEBSERVER</span> | grep -v check | awk -F<span class="s1">&#39;[,|]&#39;</span> <span class="s1">&#39;{print $2 &quot; ===&amp;gt; &quot;$18}&#39;</span> <span class="nv">OFS</span><span class="o">=</span><span class="s2">&quot;,&quot;</span>
+    <span class="k">fi</span>
+<span class="k">     if</span> <span class="o">[[</span> <span class="nv">$reponse</span> <span class="o">==</span> <span class="s2">&quot;n&quot;</span> <span class="o">]]</span>
+     <span class="k">then </span><span class="nb">echo</span> <span class="s2">&quot;###Leaving###&quot;</span>
+    <span class="k">fi</span>
+    <span class="o">}</span>
+
+
+    maintenance <span class="o">()</span> <span class="o">{</span>
+    <span class="nb">echo</span> -e <span class="s2">&quot;$ROUGE&quot;&quot;---------------------------------------- &quot;</span> <span class="s2">&quot;$NORMAL&quot;</span>
+    <span class="nb">echo</span> <span class="s2">&quot;Do you want to enable maintenance? (y/n)&quot;</span>
+    <span class="nb">echo</span> -e <span class="s2">&quot;$ROUGE&quot;&quot;---------------------------------------- &quot;</span> <span class="s2">&quot;$NORMAL&quot;</span>
+    <span class="nb">read </span>reponse
+     <span class="k">if</span> <span class="o">[[</span> <span class="nv">$reponse</span> <span class="o">==</span> <span class="s2">&quot;y&quot;</span> <span class="o">]]</span>
+     <span class="k">then</span>
+<span class="k">     for </span>i in <span class="nv">$SERVERS</span>
+     <span class="k">do</span>
+<span class="k">     </span><span class="nb">echo </span>disable server <span class="nv">$BACKEND</span>/<span class="nv">$i</span> | <span class="nv">$SOCQUETTE</span>
+     sleep 2
+     <span class="k">done</span>
+<span class="k">    </span>check_status
+    <span class="k">fi</span>
+<span class="k">         if</span> <span class="o">[[</span> <span class="nv">$reponse</span> <span class="o">==</span> <span class="s2">&quot;n&quot;</span> <span class="o">]]</span>
+         <span class="k">then </span><span class="nb">echo</span> <span class="s2">&quot;###Leaving###&quot;</span>
+    <span class="k">fi</span> 
+    <span class="o">}</span>
+
+    enable_all <span class="o">()</span> <span class="o">{</span>
+    <span class="nb">echo</span> <span class="s2">&quot;Do you want to enable all servers? (y/n)&quot;</span>
+    <span class="nb">read </span>reponse
+            <span class="k">if</span> <span class="o">[[</span> <span class="nv">$reponse</span> <span class="o">==</span> <span class="s2">&quot;y&quot;</span> <span class="o">]]</span>
+            <span class="k">then</span>
+<span class="k">            for </span>i in <span class="nv">$SERVERS</span>
+            <span class="k">do</span>
+<span class="k">            </span><span class="nb">echo enable </span>server <span class="nv">$BACKEND</span>/<span class="nv">$i</span> | <span class="nv">$SOCQUETTE</span>
+            sleep 2
+            <span class="k">done</span>
+<span class="k">    </span>check_status
+    <span class="k">fi</span>
+<span class="k">         if</span> <span class="o">[[</span> <span class="nv">$reponse</span> <span class="o">==</span> <span class="s2">&quot;n&quot;</span> <span class="o">]]</span>
+         <span class="k">then </span><span class="nb">echo</span> <span class="s2">&quot;###Leaving###&quot;</span>
+    <span class="k">fi</span>
+    <span class="o">}</span>
+
+
+    check_status <span class="o">()</span> <span class="o">{</span>
+    <span class="k">for </span>i in <span class="nv">$SERVERS</span>
+    <span class="k">do</span>
+<span class="k">    </span><span class="nb">echo </span>show stat | <span class="nv">$SOCQUETTE</span> | grep <span class="nv">$i</span> | grep -v check | awk -F<span class="s1">&#39;[,|]&#39;</span> <span class="s1">&#39;{print $2 &quot;===&amp;gt;&quot;$18}&#39;</span> <span class="nv">OFS</span><span class="o">=</span><span class="s2">&quot;,&quot;</span> 
+            <span class="k">done</span>
+    <span class="o">}</span>
+
+    <span class="k">if</span> <span class="o">((</span><span class="nv">$# </span><span class="o">==</span> 0<span class="o">))</span>; <span class="k">then</span>
+<span class="k">    </span>print_help
+    <span class="k">fi</span>
+
+<span class="k">    while </span><span class="nb">getopts </span>smdeha pouet
+    <span class="k">do case</span> <span class="s2">&quot;$pouet&quot;</span> in
+     d<span class="o">)</span> disable_server;;
+     e<span class="o">)</span> enable_server;;
+     <span class="o">[</span>?<span class="o">])</span> print_help;;
+     <span class="s1">&#39;#$&#39;</span><span class="o">)</span> print_help;;
+     a<span class="o">)</span> enable_all;;
+     s<span class="o">)</span> check_status;;
+     m<span class="o">)</span> maintenance;;
+     h<span class="o">)</span> print_help;;
+
+     <span class="k">esac</span>
+<span class="k">    done</span>
+</pre></div>
+
+
+<p>Exemple pour ce que ça donne concrètement:</p>
+<ul>
+<li>Sortir un serveur du cluster:</li>
+</ul>
+<div class="highlight"><pre>    prod@lb1:~# ./wwwcluster.sh -d web2
+    ----------------------------------  
+    Do you want to disable web2? <span class="o">(</span>y/n<span class="o">)</span>
+    ----------------------------------  
+    y
+
+    <span class="nv">web2</span> <span class="o">===</span>&gt;; MAINT
+</pre></div>
+
+
+<ul>
+<li>Afficher l’état des serveurs:</li>
+</ul>
+<div class="highlight"><pre>    prod@lb1:~# ./wwwcluster.sh -s
+    <span class="nv">web1</span><span class="o">===</span>&gt;UP
+    <span class="nv">web2</span><span class="o">===</span>&gt;MAINT
+    <span class="nv">web3</span><span class="o">===</span>&gt;UP
+    <span class="nv">web4</span><span class="o">===</span>&gt;DOWN
+    prod@lb1:~# 
+</pre></div>
+
+
+<p>Je vous laisse tester les autres fonctions…</p>
+<p><strong>Renvoyer les logs haproxy vers syslog:</strong></p>
+<p>On se souvient de ces deux lignes dans notre configuration de Haproxy:</p>
+<div class="highlight"><pre>    log /dev/log local0 info
+    log /dev/log local0 notice
+</pre></div>
+
+
+<p>Sous Ubuntu, RSyslog est installé de base, il nous suffit donc de le
+configurer afin d’envoyer les logs vers où bon nous semble. Pour ma part
+je me suis contenté de rajouter dans mon /etc/rsyslog/d/ un fichier
+haproxy.conf qui a cette forme:</p>
+<div class="highlight"><pre>    <span class="k">if</span> <span class="o">(</span><span class="nv">$programname</span> <span class="o">==</span> <span class="s1">&#39;haproxy&#39;</span> and <span class="nv">$syslogseverity</span>-text <span class="o">==</span> <span class="s1">&#39;info&#39;</span><span class="o">)</span> <span class="k">then</span> -/var/log/haproxy/haproxy-info.log
+    &amp;amp; ~
+    <span class="k">if</span> <span class="o">(</span><span class="nv">$programname</span> <span class="o">==</span> <span class="s1">&#39;haproxy&#39;</span> and <span class="nv">$syslogseverity</span>-text <span class="o">==</span> <span class="s1">&#39;notice&#39;</span><span class="o">)</span> <span class="k">then</span> -/var/log/haproxy/haproxy-notice.log
+    &amp;amp; ~
+</pre></div>
+
+
+<p>Un reload de Rsyslog plus tard, j’ai bien mes info et notice qui sont
+renvoyés vers mon /var/log/haproxy/haproxy-*.log.</p>
+<p>Et n’oubliez pas d’adapter votre sysctl.conf pour accroitre les
+performances (à adapter suivant votre configuration et vos besoins):</p>
+<div class="highlight"><pre>    net.ipv4.tcp_tw_reuse <span class="o">=</span> 1
+    net.ipv4.ip_local_port_range <span class="o">=</span> 1024 65023
+    net.ipv4.tcp_max_syn_backlog <span class="o">=</span> 10240
+    net.ipv4.tcp_max_tw_buckets <span class="o">=</span> 400000
+    net.ipv4.tcp_max_orphans <span class="o">=</span> 60000
+    net.ipv4.tcp_synack_retries <span class="o">=</span> 3
+    net.core.somaxconn <span class="o">=</span> 10000
+
+    net.ipv4.tcp_syncookies <span class="o">=</span> 1
+    net.ipv4.conf.all.rp_filter <span class="o">=</span> 1
+    net.ipv4.tcp_max_syn_backlog <span class="o">=</span> 1024
+</pre></div>
+
+
+<p><strong>La gestion du HTTPS:</strong></p>
+<p>J’ai commencé par
+configurer <a href="https://www.stunnel.org/index.html" title="stunnel">stunnel</a> qui
+fait ça très bien, et qui s’installe et se configure en 30 secondes. Ca
+fonctionnait tres tres bien, mais sous grosse charge je me suis rendu
+compte que stunnel avait des comportements bizarres. J’ai donc essayé le
+offloading ssl avec HaProxy qui lui aussi fonctionnait tres bien, mais
+sur une version de développement. L’argent étant le nerf de la guerre,
+en attendant que l’offload SSL soit implanté en version stable dans
+HaProxy, je me suis dirigé sur un proxy nginx tout simple qui est rompu
+à l’exercice, voici juste un bout de la configuration afin d’illustrer
+le proxy_pass qui écoute sur le port 443 et renvoie vers… Haproxy.</p>
+<div class="highlight"><pre>                ssl_certificate /etc/ssl/private/famihero.crt;
+                ssl_certificate_key /etc/ssl/private/famihero.key;
+         ssl_client_certificate /etc/ssl/certs/GandiStandardSSLCA.pem;
+
+                location / <span class="o">{</span>
+                    proxy_pass http://127.0.0.1:80<span class="nv">$request_uri</span>;
+</pre></div>
+
+
+<p><strong>3. Corosync et Pacemaker</strong></p>
+<p>Vous l’aurez remarqué, je parle d’ip flottante au début. C’est sur cette
+adresse ip qu’arrivent les requêtes qui sont ensuite rebalancées au load
+balancer actif. Cas pratique:</p>
+<p>Si lb1 tombe pour une raison ou une autre, l’ip redirige le trafic
+automatiquement et de manière totalement transparente pour l’utilisateur
+vers lb2 qui devient le load balancer actif.</p>
+<p>Il faut bien évidemment avoir deux load balancers avec une configuration
+identique (haproxy, nginx, memcache, etc…).</p>
+<p>Pour bénéficier de la haute disponibilité au niveau des proxys, j’ai
+utilisé le couple corosync/pacemaker. Ce sont deux softs relativement
+complexes et je ne dois m’en servir qu’à 10% de leurs possibilités, mais
+ils font vraiment bien leur taffe.</p>
+<p><strong>Installation et configuration.</strong></p>
+<p>Comme Pacemaker utilise corosync de base sous Ubuntu j’ai juste lancé un
+apt-get install pacemaker. La configuration en elle même est très
+facile, surtout pour ceux qui connaissent un peu Cisco.</p>
+<p>Juste après l’installation, il faut éditer le fichier
+/etc/default/corosync et setter à ‘yes’ pour que corosync se lance au
+boot:</p>
+<div class="highlight"><pre>    prod@lb1:~# cat /etc/default/corosync 
+    <span class="c"># start corosync at boot [yes|no]</span>
+    <span class="nv">START</span><span class="o">=</span>yes
+</pre></div>
+
+
+<p>On fera bien évidement la même chose sur le second load-balancer.</p>
+<p>Il nous faut ensuite générer une clef d’authentification sur un des deux
+load-balancers avec la commande:</p>
+<div class="highlight"><pre>    cyril@lb1:~# sudo corosync-keygen
+</pre></div>
+
+
+<p>Qui va aller créer un fichier /etc/corosync/authkey. On recopie cette
+clef sur lb2 puis on édite ensuite le fichier
+/etc/corosync/corosync.conf et on configure la partie interface avec vos
+informations réseau.</p>
+<div class="highlight"><pre>      interface <span class="o">{</span>
+      <span class="c"># Votre numéro d&#39;interface </span>
+      ringnumber: 0
+                    <span class="c"># Le réseau utilisé sur la carte. Loopback par défaut.</span>
+      <span class="c">#bindnetaddr: 127.0.0.1 </span>
+      bindnetaddr: 78.109.93.0
+                    <span class="c"># L&#39;adresse de multicast pour les tests</span>
+      mcastaddr: 226.94.1.1
+                    <span class="c"># Port à utiliser pour le multicast</span>
+      mcastport: 5405
+     <span class="o">}</span>
+</pre></div>
+
+
+<p>On va ensuite lancer corosync:</p>
+<div class="highlight"><pre>    cyril@lb1:/# sudo /etc/init.d/corosync start
+</pre></div>
+
+
+<p>Un simple crm_mon vous permettra de voir que corosync tourne bien. Il
+suffit maintenant de configurer la CIB, soit la Configuration
+Information Base. C’est une fois de plus tres simple.</p>
+<p>On va utiliser la commande crm pour rentrer en mode commande en ligne:</p>
+<div class="highlight"><pre>    cyril@lb2:~# sudo crm
+    crm<span class="o">(</span>live<span class="o">)</span><span class="c"># </span>
+</pre></div>
+
+
+<p>Puis on crée notre première configuration:</p>
+<div class="highlight"><pre>    crm<span class="o">(</span>live<span class="o">)</span><span class="c"># cib new configlbfami201211</span>
+    INFO: configlbfami201211 shadow CIB created
+    crm<span class="o">(</span>configlbfami201211<span class="o">)</span><span class="c">#</span>
+    crm<span class="o">(</span>configlbfami201211<span class="o">)</span><span class="c"># configure</span>
+    crm<span class="o">(</span>configlbfami201211<span class="o">)</span>configure#
+    crm<span class="o">(</span>configlbfami201211<span class="o">)</span>configure# property stonith-enabled<span class="o">=</span><span class="nb">false</span>
+</pre></div>
+
+
+<p>et c’est parti pour la configuration de notre ip virtuelle:</p>
+<div class="highlight"><pre>    crm<span class="o">(</span>configlbfami201211<span class="o">)</span>configure# primitive vip ocf:heartbeat:IPaddr2 params <span class="nv">ip</span><span class="o">=</span><span class="s2">&quot;78.109.93.62&quot;</span> <span class="nv">nic</span><span class="o">=</span><span class="s2">&quot;eth0&quot;</span> <span class="nv">cidr_netmask</span><span class="o">=</span><span class="s2">&quot;24&quot;</span> op start <span class="nv">interval</span><span class="o">=</span><span class="s2">&quot;0s&quot;</span> <span class="nv">timeout</span><span class="o">=</span><span class="s2">&quot;60s&quot;</span> op monitor <span class="nv">interval</span><span class="o">=</span><span class="s2">&quot;5s&quot;</span> <span class="nv">timeout</span><span class="o">=</span><span class="s2">&quot;20s&quot;</span> op stop <span class="nv">interval</span><span class="o">=</span><span class="s2">&quot;0s&quot;</span> <span class="nv">timeout</span><span class="o">=</span><span class="s2">&quot;60s&quot;</span>
+</pre></div>
+
+
+<p>On peut bien sûr configurer idéalement plusieurs ip virtuelles, chacune
+pour une utilisation bien différente (intranet, contenu statique, etc),
+voire même rajouter un autre load-balancer.</p>
+<p>Il ne nous reste plus qu’à vérifier la config mise en place et de la
+commiter:</p>
+<div class="highlight"><pre>    crm<span class="o">(</span>configlbfami201211<span class="o">)</span>configure# verify
+    crm<span class="o">(</span>configlbfami201211<span class="o">)</span>configure# end
+    There are changes pending. Do you want to commit them? y
+    crm<span class="o">(</span>configlbfami201211<span class="o">)</span><span class="c">#</span>
+    crm<span class="o">(</span>configlbfami201211<span class="o">)</span><span class="c"># cib use live</span>
+    crm<span class="o">(</span>live<span class="o">)</span><span class="c"># cib commit configlbfami201211</span>
+    INFO: commited <span class="s1">&#39;configlbfami201211&#39;</span> shadow CIB to the cluster
+    crm<span class="o">(</span>live<span class="o">)</span><span class="c"># quit</span>
+    bye
+</pre></div>
+
+
+<p>C’est fini, ça n’a pas pris plus de 2 minutes, même si dans ce cas la
+problématique est simplissime (assurer la haute dispo de deux nodes, lb1
+et lb2 sur une ip virtuelle) et que nous ne sommes pas du tout rentré
+dans les questions de quorums, etc… On peut vérifier notre configuration
+avec un ‘crm_mon’:</p>
+<div class="highlight"><pre>    <span class="o">============</span>
+    Last updated: Mon Apr 15 16:21:35 2013
+    Last change: Sun Nov  25 23:58:42 2012 via cibadmin on lb1
+    Stack: openais
+    Current DC: lb1 - partition with quorum
+    Version: 1.1.7-ee0730e13d124c3d58f00016c3376a1de5323cff
+    2 Nodes configured, 2 expected votes
+    1 Resources configured.
+    <span class="o">============</span>
+
+    Online: <span class="o">[</span> lb1 lb2 <span class="o">]</span>
+
+    vip     <span class="o">(</span>ocf::heartbeat:IPaddr2<span class="o">)</span>:       Started lb1
+</pre></div>
+
+
+<p>Ou avec crm en lançant:</p>
+<div class="highlight"><pre>    cyril@lb2:~# sudo crm configure
+    crm<span class="o">(</span>live<span class="o">)</span>configure# show
+    node lb1
+    node lb2
+    primitive vip ocf:heartbeat:IPaddr2   
+    params <span class="nv">ip</span><span class="o">=</span><span class="s2">&quot;78.109.93.62&quot;</span> <span class="nv">nic</span><span class="o">=</span><span class="s2">&quot;eth0&quot;</span> <span class="nv">cidr_netmask</span><span class="o">=</span><span class="s2">&quot;24&quot;</span>   
+    op start <span class="nv">interval</span><span class="o">=</span><span class="s2">&quot;0s&quot;</span> <span class="nv">timeout</span><span class="o">=</span><span class="s2">&quot;60s&quot;</span>   
+    op monitor <span class="nv">interval</span><span class="o">=</span><span class="s2">&quot;5s&quot;</span> <span class="nv">timeout</span><span class="o">=</span><span class="s2">&quot;20s&quot;</span>   
+    op stop <span class="nv">interval</span><span class="o">=</span><span class="s2">&quot;0s&quot;</span> <span class="nv">timeout</span><span class="o">=</span><span class="s2">&quot;60s&quot;</span>
+    property <span class="nv">$id</span><span class="o">=</span><span class="s2">&quot;cib-bootstrap-options&quot;</span>   
+    dc-version<span class="o">=</span><span class="s2">&quot;1.1.7-ee0730e13d124c3d58f00016c3376a1de5323cff&quot;</span>   
+    cluster-infrastructure<span class="o">=</span><span class="s2">&quot;openais&quot;</span>   
+    expected-quorum-votes<span class="o">=</span><span class="s2">&quot;2&quot;</span>   
+    stonith-enabled<span class="o">=</span><span class="s2">&quot;false&quot;</span>   
+    no-quorum-policy<span class="o">=</span><span class="s2">&quot;ignore&quot;</span>
+    crm<span class="o">(</span>live<span class="o">)</span>configure# <span class="nb">exit</span>
+<span class="nb">    </span>bye
+</pre></div>
+
+
+<p>Quelques commandes pratiques avec le Cluster Resource Manager, du genre
+migrer l’ip flottante sur lb2 pour faire une opération de maintenance
+sur lb1:</p>
+<div class="highlight"><pre>    cyril@lb2:~# sudo crm
+    crm<span class="o">(</span>live<span class="o">)</span><span class="c"># resource</span>
+    crm<span class="o">(</span>live<span class="o">)</span>resource# list
+    failover-ip     <span class="o">(</span>ocf::heartbeat:IPaddr<span class="o">)</span> Started
+    crm<span class="o">(</span>live<span class="o">)</span>resource# migrate failover-ip lb2
+    crm<span class="o">(</span>live<span class="o">)</span>resource# bye
+    bye
+</pre></div>
+
+
+<p>Bref, c’est tout simple à mettre en place et c’est d’une robustesse et
+d’une facilité incroyable.</p>
+<p><strong>4. Nginx</strong></p>
+<p>Les frontaux sont bien sûr tous sur nginx. C’est léger, véloce, et c’est
+un régal à configurer.</p>
+<p><strong>Installation:</strong></p>
+<div class="highlight"><pre>    prod@web4:~# <span class="nb">cd</span> /usr/local/src/
+    prod@web4:~# tar xfz nginx-1.2.8.tar.gz 
+    prod@web4:~# <span class="nb">cd </span>nginx-1.2.8/
+    prod@web4:~# ./configure --with-http_gzip_static_module --with-http_stub_status_module --with-http_ssl_module --with-http_realip_module
+    prod@web4:~# sudo make
+    prod@web4:~# sudo make install
+</pre></div>
+
+
+<p>Rien de bien particulier, ça prend 30 secondes.</p>
+<p>La mise en place de la configuration nécessite de prendre un peu plus de
+temps et pas mal de tests pour trouver la meilleure combinaison
+possible.</p>
+<p>Vous faire un copier/coller de la configuration (nginx.conf) n’a que peu
+d’intérêt, aussi on va juste regarder quelques paramètres non-vanilla:</p>
+<p>On se souvient qu’on a compilé nginx avec le
+module <a href="http://wiki.nginx.org/HttpRealipModule" title="HttpRealipModule">–with-http_realip_module</a>,
+ça va nous servir à recevoir les ip des clients plutôt que l’ip du
+load-balancer.</p>
+<div class="highlight"><pre>    set_real_ip_from   10.17.9.3;
+    real_ip_header X-Forwarded-For;
+</pre></div>
+
+
+<p>On prend bien soin de calibrer les timeouts:</p>
+<div class="highlight"><pre>    client_body_timeout   60;
+    client_header_timeout 60;
+    keepalive_timeout     60 60;
+    send_timeout          60;
+</pre></div>
+
+
+<p>On ajoute quelques options de bon sens:</p>
+<div class="highlight"><pre>    ignore_invalid_headers   on;
+    recursive_error_pages    on;
+    sendfile                 on;
+    server_name_in_redirect off;
+    server_tokens           off;
+
+    tcp_nodelay on;
+    tcp_nopush  on;
+</pre></div>
+
+
+<p>Et la compression, ça serait impensable de ne pas l’utiliser:</p>
+<div class="highlight"><pre>      gzip              on;
+      <span class="c">#gzip_static       on;</span>
+      gzip_buffers      16 8k;
+      gzip_comp_level   9;
+      gzip_http_version 1.1;
+      gzip_min_length   1000;
+      gzip_types application/x-javascript application/json text/css text/plain image/x-icon image/bmp image/png image/gif text/javascript;
+      gzip_vary         on;
+      gzip_proxied any;
+</pre></div>
+
+
+<p>Toutes ces commandes se retrouvent dans
+le <a href="http://wiki.nginx.org/HttpCoreModule" title="HttpCoreModule">HttpCoreModule</a>,
+quand je me mets à le lire je découvre plein de nouvelles choses et du
+coup je passe pas mal de temps à voir ce que je peux optimiser ou mieux
+faire avec.</p>
+<p>Je mets par habitude mes sites dans un repertoire à part. Certains
+créent aussi un lien symbolique sur un autre répertoire avec du
+site-available pour faire comme avec Apache.</p>
+<div class="highlight"><pre>    include /usr/local/nginx/conf/sites-enabled/*;
+</pre></div>
+
+
+<p>La configuration du serveur est tout aussi palpitante, rien de
+particulier si ça n’est la partie server_name que j’ai décliné comme ça
+(pour jouer avec les différents server_namer que je possède):</p>
+<div class="highlight"><pre>    <span class="nb">set</span> <span class="nv">$lead_domain_name</span> www.famihero.com;
+    <span class="k">if</span> <span class="o">(</span><span class="nv">$http_host</span> !<span class="o">=</span> <span class="nv">$lead_domain_name</span><span class="o">)</span> <span class="o">{</span>
+    rewrite  ^<span class="o">(</span>.*<span class="o">)</span><span class="nv">$ </span> http://<span class="nv">$lead_domain_name$1</span> permanent;
+    <span class="o">}</span>
+</pre></div>
+
+
+<p>J’aurai aussi pu faire ça comme ça mais c’est moins sexy et moins
+pratique:</p>
+<div class="highlight"><pre>    <span class="k">if</span> <span class="o">(</span><span class="nv">$http_host</span> ~* <span class="o">(</span>www.famihero.fr|famihero.fr|www.famiheros.com|famiheros.com|etc...<span class="o">)</span> <span class="o">)</span> <span class="o">{</span>
+    rewrite  ^/<span class="o">(</span>.*<span class="o">)</span><span class="nv">$ </span> http://www.famihero.com/<span class="nv">$1</span>  permanent;
+    <span class="o">}</span>
+</pre></div>
+
+
+<p>On va aussi penser à ne pas logger les check de haproxy pour ne pas
+pourrir les logs:</p>
+<div class="highlight"><pre>    location /haproxytest.txt <span class="o">{</span>
+    access_log off;
+    <span class="o">}</span>
+</pre></div>
+
+
+<p>La partie pour les static fait l’objet d’une configuration à part qui
+donne ça:</p>
+<div class="highlight"><pre>    server <span class="o">{</span>
+        server_name     statics.famihero.com;
+        root /var/www/static3/current/web;
+
+        location / <span class="o">{</span>
+            <span class="k">return </span>404;
+        <span class="o">}</span>
+
+        location ~ <span class="se">\.</span><span class="o">(</span>?:jpg|jpeg|js|css|gif|png|swf|ico|pdf<span class="o">)</span><span class="nv">$ </span><span class="o">{</span>
+            expires        365d;
+            access_log     off;
+            add_header Pragma public;
+            add_header Cache-Control <span class="s2">&quot;public, must-revalidate, proxy-revalidate&quot;</span>;
+        <span class="o">}</span>
+    <span class="o">}</span>
+</pre></div>
+
+
+<p>On va s’arrêter là pour aujourd’hui. Si j’ai le courage de faire une
+deuxième partie, on parlera de php-fpm,
+de <a href="https://code.google.com/p/mysql-master-ha/" title="MMHA">mysql-master-ha</a> et
+de <a href="https://www.icinga.org/" title="Icinga">Icinga</a>.</p>
+            </div><!-- /.entry-content -->
+
+
+        </div><!-- /.eleven.columns -->
+
+<div class="three columns">
+
+<h4>Pages</h4>
+
+ <ul>
+      <li><a href="http://cyrilb.me/pages/about.html">About</a></li>
+  </ul>
+
+<h4>Categories</h4>
+<ul>
+		<li><a href="http://cyrilb.me/category/haproxy.html">haproxy</a></li>
+		<li><a href="http://cyrilb.me/category/haproxy-infra-linux-nginx.html">haproxy, infra, linux, nginx</a></li>
+		<li><a href="http://cyrilb.me/category/linux.html">linux</a></li>
+		<li><a href="http://cyrilb.me/category/linux-nginx.html">linux, nginx</a></li>
+		<li><a href="http://cyrilb.me/category/nginx.html">nginx</a></li>
+</ul>
+
+
+<h4>Tags</h4>
+	<ul>
+	    <li class="tag-1"><a href="http://cyrilb.me/tag/haproxy.html">haproxy</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/aria2c.html">aria2c</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/acl.html">acl</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/locale.html">locale</a></li>
+	    <li class="tag-1"><a href="http://cyrilb.me/tag/linux.html">linux</a></li>
+	    <li class="tag-2"><a href="http://cyrilb.me/tag/logs.html">logs</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/curl.html">curl</a></li>
+	    <li class="tag-1"><a href="http://cyrilb.me/tag/nginx.html">nginx</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/workers.html">workers</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/logstash.html">logstash</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/wget.html">wget</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/headers.html">headers</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/infra.html">infra</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/iostat.html">iostat</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/kibana.html">kibana</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/rsyslog.html">rsyslog</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/hdparm.html">hdparm</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/process.html">process</a></li>
+	    <li class="tag-4"><a href="http://cyrilb.me/tag/syslog.html">syslog</a></li>
+</ul>
+
+
+
+</div> </div><!-- /.row -->
+
+
+</section>
+
+       </div><!-- /.row -->
+    </div><!-- /.container -->
+
+
+       <div class="container.nopad bg">
+
+    
+        <footer id="credits" class="row">
+          <div class="seven columns left-center">
+
+                   <address id="about" class="vcard body">
+                    Proudly powered by <a href="http://getpelican.com/">Pelican</a>,
+                    which takes great advantage of <a href="http://python.org">Python</a>.
+                    <br />
+                    Based on the <a target="_blank" href="http://gumbyframework.com">Gumby Framework</a>
+                    </address>
+          </div>
+
+
+          <div class="seven columns">
+            <div class="row">
+              <ul class="socbtns">
+
+                <li><div class="btn primary"><a href="https://github.com/cdarylb" target="_blank">Github</a></div></li>
+
+                <li><div class="btn twitter"><a href="https://twitter.com/cdarylb" target="_blank">Twitter</a></div></li>
+
+                <li><div class="btn facebook"><a href="https://www.facebook.com/cyril.beaufrere" target="_blank">Facebook</a></div></li>
+
+
+              </ul>
+            </div>
+          </div>
+        </footer>
+
+    </div>
+
+
+  <script src="http://cyrilb.me/theme/js/libs/jquery-1.9.1.min.js"></script>
+  <script src="http://cyrilb.me/theme/js/libs/gumby.min.js"></script>
+  <script src="http://cyrilb.me/theme/js/plugins.js"></script>
+</body>
+</html>

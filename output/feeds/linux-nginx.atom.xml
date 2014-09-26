@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Trajectoires d'un admin</title><link href="http://cyrilb.me/" rel="alternate"></link><link href="http://cyrilb.me/feeds/linux-nginx.atom.xml" rel="self"></link><id>http://cyrilb.me/</id><updated>2012-08-10T11:16:00+02:00</updated><entry><title>Combien de workers pour nginx</title><link href="http://cyrilb.me/combien-de-workers-pour-nginx.html" rel="alternate"></link><updated>2012-08-10T11:16:00+02:00</updated><author><name>cyrilb</name></author><id>tag:cyrilb.me,2012-08-10:combien-de-workers-pour-nginx.html</id><summary type="html">&lt;p&gt;La question du « combien je mets de worker_processes et
+worker_connections dans mon nginx.conf » revient souvent. Voici
+quelques lignes afin de savoir à quoi servent ces workers et de combien
+vous en avez besoin, et surtout, de savoir combien de requêtes clients
+vous allez pouvoir servir avec votre configuration.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;worker_processes&lt;/strong&gt; : Vient du Latin workus processus (ok c’est pas
+drôle). C’est tout simplement le nombre de « single-threaded process »
+qui vont spawner, un peu à l’instar des child process de Apache. Ca sert
+à plein de choses (diminuer la latence lorsque des workers sont bloqués
+par trop d’I/O sur le disque, limiter le nombre de connexions par
+process, etc). Dans la pratique, ça donne ça (remarquez le master
+process qui fait démarrer les workers process):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;root@elendil:~# ps auxfw | grep -i nginx | grep -v grep
+root 6718 0.0 0.0 35496 1180 ? Ss Jul03 0:00 nginx: master process /usr/local/nginx/sbin/nginx
+nobolife 6719 0.0 0.0 37272 4092 ? S Jul03 22:01 &lt;span class="se"&gt;\_&lt;/span&gt; nginx: worker process
+nobolife 6721 0.0 0.0 36980 3868 ? S Jul03 21:02 &lt;span class="se"&gt;\_&lt;/span&gt; nginx: worker process
+nobolife 6722 0.0 0.0 37056 4192 ? S Jul03 21:39 &lt;span class="se"&gt;\_&lt;/span&gt; nginx: worker process
+nobolife 6723 0.0 0.0 37004 3980 ? S Jul03 21:40 &lt;span class="se"&gt;\_&lt;/span&gt; nginx: worker process
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Alors bien sûr, vous allez me demander pourquoi j’ai mis ma directive
+worker_processes à 4. Une fois de plus avec nginx c’est très simple. Le
+nombre de workers dépend tout simplement du nombre de cores que vous
+avez. Attention, là on est sur une configuration de type frontal web qui
+utilise gzip (setté à 9 chez moi) et SSL, avec un fort traffic, bref,
+une utilisation plus ou moins classique. Par contre, si vous utilisiez
+nginx pour servir des images statiques et que la taille totale de tous
+ces fichiers est supérieure au total de votre mémoire vive, les
+intégristes de nginx préconisent de baisser le nombre de workers process
+afin d’utiliser pleinement la bande passante de votre disque dur.&lt;/p&gt;
+&lt;p&gt;Il y a plein d’options que je vous encourage à tester avec la directive
+workers_processes: worker_priority qui permet de donner une priorité à
+tel ou tel processeur, worker_cpu_affinity qui permet de binder un
+worker à un cpu dédié, worker_rlimit_nofile…&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;worker_connections&lt;/strong&gt; : C’est le nombre de connections client que peut
+recevoir un process. Avec 1024 par défaut dans le nginx.conf, je vous
+suggère de vous baser sur cette simple équation pour connaître votre
+valeur de max_clients :&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;max_clients = worker_processes * worker_connections&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;Il vous suffit ensuite de tester l’équation en pratique sur les pages de
+votre site avec &lt;a href="http://httpd.apache.org/docs/2.2/programs/ab.html" title="Apache bench"&gt;Apache
+bench&lt;/a&gt; ou
+encore
+mieux, &lt;a href="http://linux.die.net/man/1/httperf" title="httperf"&gt;httperf&lt;/a&gt; afin de
+tester l’utilisation mémoire et vos temps de réponse. A vous de jouer !&lt;/p&gt;
+&lt;p&gt;A noter que vous retrouverez toutes ces informations sur le &lt;a href="http://wiki.nginx.org/Main" title="Wiki Nginx"&gt;wiki de
+nginx&lt;/a&gt;.&lt;/p&gt;</summary><category term="nginx"></category><category term="process"></category><category term="workers"></category></entry></feed>

@@ -1,0 +1,330 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Trajectoires d'un admin</title><link href="http://cyrilb.me/" rel="alternate"></link><link href="http://cyrilb.me/feeds/linux.atom.xml" rel="self"></link><id>http://cyrilb.me/</id><updated>2013-12-10T19:20:00+01:00</updated><entry><title>Mutualiser ses logs</title><link href="http://cyrilb.me/mutualiser-ses-logs.html" rel="alternate"></link><updated>2013-12-10T19:20:00+01:00</updated><author><name>cyrilb</name></author><id>tag:cyrilb.me,2013-12-10:mutualiser-ses-logs.html</id><summary type="html">&lt;p&gt;Lorqu’on a plusieurs serveurs (webs, mysql, etc), il devient compliqué
+d’aller d’une machine à l’autre pour s’assurer que tout va bien ou pour
+déceler un problème qui affecte l’ensemble de votre infrastructure.&lt;/p&gt;
+&lt;p&gt;C’est pour cela, qu’en plus de stocker les logs individuellement sur
+chaque serveur, il est fortement recommandé de les exporter sur un
+serveur dédié et de les mutualiser afin de pouvoir effectuer des
+traitement groupés sur l’ensemble des logs à notre disposition.&lt;/p&gt;
+&lt;p&gt;Et comme tout bon admin, qui dit traitement mutualisé dit traitements
+industrialisés.&lt;/p&gt;
+&lt;p&gt;Nous allons voir ici deux façons de mutualiser les logs nginx de ses
+frontaux webs pour l’exemple, sans trop rentrer dans le détail, la
+première avec Rsyslog, la seconde avec logstash.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Mutualiser ses logs nginx avec Rsyslog:&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href="http://www.rsyslog.com/" title="RSyslog"&gt;Rsyslog&lt;/a&gt; est propulsé de base avec
+Ubuntu, rien à configurer donc, ça tourne déjà, on va donc se contenter
+de configurer rsyslog afin de parser les logs nginx et de les envoyer au
+serveur qui va mutualiser les logs.&lt;/p&gt;
+&lt;p&gt;Sur les serveurs webs, rajouter le fichier nginx.conf dans
+/etc/rsyslog.d/&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nv"&gt;$ModLoad&lt;/span&gt; imfile
+
+&lt;span class="nv"&gt;$InputFileName&lt;/span&gt;          /usr/local/nginx/logs/access.log
+&lt;span class="nv"&gt;$InputFileTag&lt;/span&gt;           nginx_access_log:
+&lt;span class="nv"&gt;$InputFileStateFile&lt;/span&gt;     nginx_access_log
+&lt;span class="nv"&gt;$InputFileSeverity&lt;/span&gt;      info
+&lt;span class="nv"&gt;$InputFileFacility&lt;/span&gt;      user
+&lt;span class="nv"&gt;$InputRunFileMonitor&lt;/span&gt;
+
+&lt;span class="nv"&gt;$InputFileName&lt;/span&gt;          /usr/local/nginx/logs/error.log
+&lt;span class="nv"&gt;$InputFileTag&lt;/span&gt;           nginx_error_log:
+&lt;span class="nv"&gt;$InputFileStateFile&lt;/span&gt;     nginx_error_log
+&lt;span class="nv"&gt;$InputFileSeverity&lt;/span&gt;      info
+&lt;span class="nv"&gt;$InputFileFacility&lt;/span&gt;      user
+&lt;span class="nv"&gt;$InputRunFileMonitor&lt;/span&gt;
+
+&lt;span class="c"&gt;# lit le fichier de log toutes les deux secondes&lt;/span&gt;
+&lt;span class="nv"&gt;$InputFilePollingInterval&lt;/span&gt; 2
+
+&lt;span class="c"&gt;#envoie les logs en tcp a 192.168.1.15 port 1025&lt;/span&gt;
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="nv"&gt;$syslogtag&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;nginx_access_log:&amp;#39;&lt;/span&gt; &lt;span class="k"&gt;then&lt;/span&gt; @@&lt;span class="o"&gt;(&lt;/span&gt;z9&lt;span class="o"&gt;)&lt;/span&gt;192.168.1.15:1025
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="nv"&gt;$syslogtag&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;nginx_error_log:&amp;#39;&lt;/span&gt; &lt;span class="k"&gt;then&lt;/span&gt; @@&lt;span class="o"&gt;(&lt;/span&gt;z9&lt;span class="o"&gt;)&lt;/span&gt;192.168.1.15:1025
+
+&lt;span class="c"&gt;#ne log pas ce qui est taggé nginx (pour ne pas logger en double)&lt;/span&gt;
+:syslogtag, contains, &lt;span class="s2"&gt;&amp;quot;nginx&amp;quot;&lt;/span&gt; ~
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Sur le serveur qui recevra les logs, on s’assurera d’avoir au minimum
+ces directives dans /etc/rsyslog.conf (à personnaliser suivant votre
+configuration)&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nv"&gt;$FileOwner&lt;/span&gt; logz
+&lt;span class="nv"&gt;$FileGroup&lt;/span&gt; log-prod
+
+&lt;span class="nv"&gt;$CreateDirs&lt;/span&gt; on
+&lt;span class="nv"&gt;$FileCreateMode&lt;/span&gt; 0640
+&lt;span class="nv"&gt;$DirCreateMode&lt;/span&gt; 0755
+&lt;span class="nv"&gt;$Umask&lt;/span&gt; 0022
+
+&lt;span class="nv"&gt;$ModLoad&lt;/span&gt; imtcp
+&lt;span class="nv"&gt;$InputTCPServerRun&lt;/span&gt; 1025
+&lt;span class="nv"&gt;$AllowedSender&lt;/span&gt; TCP, 127.0.0.1, 192.168.1.0/24
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Puis on crée un fichier nginx.conf sous /etc/rsyslog.d/ :&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nv"&gt;$template&lt;/span&gt; nginx_access_log,&lt;span class="s2"&gt;&amp;quot;/home/logz/remote/%$YEAR%/%$MONTH%/%$DAY%/%HOSTNAME%/nginx.access.log&amp;quot;&lt;/span&gt;
+&lt;span class="nv"&gt;$template&lt;/span&gt; nginx_error_log,&lt;span class="s2"&gt;&amp;quot;/home/logz/remote/%$YEAR%/%$MONTH%/%$DAY%/%HOSTNAME%/nginx.error.log&amp;quot;&lt;/span&gt;
+
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="nv"&gt;$syslogtag&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;nginx_access_log:&amp;#39;&lt;/span&gt;         &lt;span class="k"&gt;then&lt;/span&gt; ?nginx_access_log
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="nv"&gt;$syslogtag&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;nginx_access_log:&amp;#39;&lt;/span&gt;         &lt;span class="k"&gt;then&lt;/span&gt; ~
+
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="nv"&gt;$syslogtag&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;nginx_error_log:&amp;#39;&lt;/span&gt;                   &lt;span class="k"&gt;then&lt;/span&gt; ?nginx_error_log
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="nv"&gt;$syslogtag&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;nginx_error_log:&amp;#39;&lt;/span&gt;                   &lt;span class="k"&gt;then&lt;/span&gt; ~
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Il suffit maintenant de reloader rsyslog sur les serveurs nginx et sur
+le « master » et magie, les logs de vos frontaux webs apparaitront dans
+le répertoire /home/logs/remote/.&lt;/p&gt;
+&lt;p&gt;On peut aller encore beaucoup plus loin, comme envoyer les logs
+directement dans une base mysql, ou encore faire transiter les logs via
+un fichier fifo pour ne pas avoir à les écrire sur nos serveurs webs et
+économiser autant d’ios, ça se fait tout aussi facilement à partir de
+rsyslog sans trop d’efforts et avec un minimum d’efforts.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Mutualiser ses logs avec logstash, redis et Elasticsearch&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;La solution des hipsters, des vrais. Le gros avantage de jouer avec
+logstash c’est qu’on s’absout des contraintes liées au local*, on log
+donc ce qu’on veut.&lt;/p&gt;
+&lt;p&gt;Dans l’exemple ci-dessous, on va parser les logs
+avec &lt;a href="http://logstash.net/" title="logstash"&gt;logstash&lt;/a&gt;, les envoyer sur une
+instance &lt;a href="http://redis.io/" title="redis"&gt;redis&lt;/a&gt;, et les manipuler
+avec &lt;a href="http://www.elasticsearch.org/" title="Elasticsearch"&gt;Elasticsearch&lt;/a&gt; avec
+une couche de &lt;a href="http://three.kibana.org/" title="Kibana3"&gt;Kibana&lt;/a&gt; comme web
+front end à Elasticsearch.&lt;/p&gt;
+&lt;p&gt;Sur tous vos frontaux webs (après avoir installé l’openjdk, java
+oblige):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;wget http://logstash.objects.dreamhost.com/release/logstash-1.1.13-flatjar.jar
+mkdir -p /usr/local/bin/logstash
+mv logstash-1.1.13-flatjar.jar /usr/local/bin/logstash/logstash.jar
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;div class="highlight"&gt;&lt;pre&gt;vi /etc/logstash.conf
+
+input &lt;span class="o"&gt;{&lt;/span&gt;
+ file &lt;span class="o"&gt;{&lt;/span&gt;
+ &lt;span class="nb"&gt;type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;nginx_access&amp;quot;&lt;/span&gt;
+ &lt;span class="nv"&gt;path&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="o"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/usr/local/nginx/logs/access.log&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;]&lt;/span&gt;
+ &lt;span class="nv"&gt;discover_interval&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; 10
+ &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;span class="o"&gt;}&lt;/span&gt;
+
+input &lt;span class="o"&gt;{&lt;/span&gt;
+ file &lt;span class="o"&gt;{&lt;/span&gt;
+ &lt;span class="nb"&gt;type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;nginx_error&amp;quot;&lt;/span&gt;
+ &lt;span class="nv"&gt;path&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="o"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/usr/local/nginx/logs/error.log&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;]&lt;/span&gt;
+ &lt;span class="nv"&gt;discover_interval&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; 10
+ &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;span class="o"&gt;}&lt;/span&gt;
+
+filter &lt;span class="o"&gt;{&lt;/span&gt;
+ grok &lt;span class="o"&gt;{&lt;/span&gt;
+ &lt;span class="nb"&gt;type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; nginx_access
+ &lt;span class="nv"&gt;pattern&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;%{COMBINEDAPACHELOG}&amp;quot;&lt;/span&gt;
+ &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;span class="o"&gt;}&lt;/span&gt;
+
+filter &lt;span class="o"&gt;{&lt;/span&gt;
+ grok &lt;span class="o"&gt;{&lt;/span&gt;
+ &lt;span class="nb"&gt;type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; nginx_error
+ &lt;span class="nv"&gt;pattern&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;%{COMBINEDAPACHELOG}&amp;quot;&lt;/span&gt;
+ &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;span class="o"&gt;}&lt;/span&gt;
+
+output &lt;span class="o"&gt;{&lt;/span&gt;
+ redis &lt;span class="o"&gt;{&lt;/span&gt; &lt;span class="nv"&gt;host&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;10.17.9.12&amp;quot;&lt;/span&gt; &lt;span class="nv"&gt;data_type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;list&amp;quot;&lt;/span&gt; &lt;span class="nv"&gt;key&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;logstash&amp;quot;&lt;/span&gt; &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;span class="o"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Puis hop, on lance logstash:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;/usr/bin/java -jar /usr/local/bin/logstash/logstash.jar agent -f /etc/logstash.conf -w 1
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Je vous conseille d’écrire un script d’init ou d’en récupérer un.&lt;/p&gt;
+&lt;p&gt;Rendez-vous ensuite sur le serveur qui accueillera vos logs, et on
+installe &lt;a href="http://www.elasticsearch.org/" title="elasticsearch"&gt;elasticsearch&lt;/a&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;wget https://download.elasticsearch.org/elasticsearch/elasticsearch/elasticsearch-0.90.1.zip
+unzip elasticsearch-0.90.1.zip
+rm -rf elasticsearch-0.90.1.zip
+mv elasticsearch-0.90.1 elasticsearch
+sudo mv elasticsearch /usr/local/share
+&lt;span class="nb"&gt;cd&lt;/span&gt; /usr/local/share
+sudo chmod 755 elasticsearch
+&lt;span class="nb"&gt;cd&lt;/span&gt; &lt;span class="nv"&gt;$HOME&lt;/span&gt;
+curl -L http://github.com/elasticsearch/elasticsearch-servicewrapper/tarball/master | tar -xz
+mv *servicewrapper*/service /usr/local/share/elasticsearch/bin/
+rm -Rf *servicewrapper*
+/usr/local/share/elasticsearch/bin/service/elasticsearch install
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;On installe ensuite Redis (un simple apt-get install redis-server
+suffit).&lt;/p&gt;
+&lt;p&gt;Puis installation de logstash et on renseigne le fichier de conf:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;input &lt;span class="o"&gt;{&lt;/span&gt;
+ redis &lt;span class="o"&gt;{&lt;/span&gt;
+ &lt;span class="nv"&gt;host&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;127.0.0.1&amp;quot;&lt;/span&gt;
+ &lt;span class="nv"&gt;port&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; 6379
+ &lt;span class="nb"&gt;type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;redis-input&amp;quot;&lt;/span&gt;
+ &lt;span class="nv"&gt;data_type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;list&amp;quot;&lt;/span&gt;
+ &lt;span class="nv"&gt;key&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;logstash&amp;quot;&lt;/span&gt;
+ &lt;span class="nv"&gt;format&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;json_event&amp;quot;&lt;/span&gt;
+ &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;span class="o"&gt;}&lt;/span&gt;
+output &lt;span class="o"&gt;{&lt;/span&gt;
+ elasticsearch &lt;span class="o"&gt;{&lt;/span&gt;
+ &lt;span class="nv"&gt;host&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;10.17.9.12&amp;quot;&lt;/span&gt;
+ &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;span class="o"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Et comme on est trop des hipsters, on
+installe &lt;a href="http://three.kibana.org/intro.html" title="Kibana3"&gt;Kibana3&lt;/a&gt; qui va
+nous permettre de taper notre ES comme des swags.&lt;/p&gt;
+&lt;p&gt;Si vous avez bien tout suivi, vous aurez accès à un joli dashboard très
+pratique.&lt;/p&gt;</summary><category term="kibana"></category><category term="linux"></category><category term="logs"></category><category term="logstash"></category><category term="rsyslog"></category><category term="syslog"></category></entry><entry><title>Aria2c, une alternative à Wget</title><link href="http://cyrilb.me/aria2c-une-alternative-a-wget.html" rel="alternate"></link><updated>2013-03-12T15:59:00+01:00</updated><author><name>cyrilb</name></author><id>tag:cyrilb.me,2013-03-12:aria2c-une-alternative-a-wget.html</id><summary type="html">&lt;p&gt;Je me sers pratiquement tous les jours de wget ou de curl, que ce soit
+pour downloader un fichier quelconque, pour rapatrier et analyser mes
+headers ou tester les performances de certaines parties de mon site.&lt;/p&gt;
+&lt;p&gt;Je ne parle même pas du nombre de mes scripts qui se servent de curl ou
+de wget, bref, impossible de m’en passer, d’autant plus que ces outils
+ont l’avantage d’être installé de base sur la plupart des distributions
+Linux actuelles.&lt;/p&gt;
+&lt;p&gt;J’ai néanmoins découvert récemment Aria2, un outil suffisamment sympa
+qui gère le download multi-protocoles (http, ftp, bittorent, etc)… et
+qui fourmille d’options que je vais vous faire découvrir ici, du moins
+celles qui m’ont servies cette semaine:&lt;/p&gt;
+&lt;p&gt;Le download d’un fichier bittorrent qu’on met en mémoire:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;cyril@hoth:~&lt;span class="nv"&gt;$ &lt;/span&gt;aria2c --follow-torrent&lt;span class="o"&gt;=&lt;/span&gt;mem http://slackware.com/torrents/slackware-14.0-install-dvd.torrent
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Voici l’output tronqué pour les curieux:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="se"&gt;\#&lt;/span&gt;2 SIZE:177.4MiB/2,345.4MiB&lt;span class="o"&gt;(&lt;/span&gt;7%&lt;span class="o"&gt;)&lt;/span&gt; CN:55 SEED:49 SPD:7.5MiBs
+UP:66.4KiBs&lt;span class="o"&gt;(&lt;/span&gt;1.9MiB&lt;span class="o"&gt;)&lt;/span&gt; ETA:4m48s&lt;span class="o"&gt;]&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Le download de base, avec un fichier de sortie pour les erreurs:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;cyril@hoth:~&lt;span class="nv"&gt;$ &lt;/span&gt;aria2c --save-session&lt;span class="o"&gt;=&lt;/span&gt;output.log http://mirrors.slackware.com/slackware-iso/slackware64-14.0-iso/slackware64-14.0-install-dvd.iso
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Le download avec plusieurs sources, le download est donc plus rapide:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;cyril@hoth:~&lt;span class="nv"&gt;$ &lt;/span&gt;aria2c -x 2 http://mirrors.slackware.com/slackware-iso/slackware64-14.0-iso/slackware64-14.0-install-dvd.iso
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Le download de la même image depuis plusieurs sources (ftp et http):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;cyril@hoth:~&lt;span class="nv"&gt;$ &lt;/span&gt;aria2c -x 2 http://mirrors.slackware.com/slackware-iso/slackware64-14.0-iso/slackware64-14.0-install-dvd.iso ftp://mirrors.slackware.com/slackware-iso/slackware64-14.0-iso/slackware64-14.0-install-dvd.iso
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Le download de fichiers contenus dans un fichier quelconque, avec une
+concurrence de 10 et avec une sortie:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;cyril@lb2:~&lt;span class="nv"&gt;$ &lt;/span&gt;aria2c -istuff.txt -j10 --save-session&lt;span class="o"&gt;=&lt;/span&gt;output.log
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Qui nous permettra un joli resume si ça plante grâce à un:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;cyril@hoth:~&lt;span class="nv"&gt;$ &lt;/span&gt;aria2c -ioutput.log
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Bien sûr la séquence de download sera restaurée automatiquement après un
+CTRL-C et aria2 gère même IPV6, que demander de plus.&lt;/p&gt;</summary><category term="aria2c"></category><category term="curl"></category><category term="linux"></category><category term="wget"></category></entry><entry><title>Changer sa locale par défaut</title><link href="http://cyrilb.me/changer-sa-locale-par-defaut.html" rel="alternate"></link><updated>2012-12-26T14:38:00+01:00</updated><author><name>cyrilb</name></author><id>tag:cyrilb.me,2012-12-26:changer-sa-locale-par-defaut.html</id><summary type="html">&lt;p&gt;Pas trop le temps de poster ces temps-ci, je me contenterai juste d’une
+petite note qui peut faire gagner pas mal de temps: changer les locales
+de son environnement. Je me base sur une distribution Ubuntu Server
+12.10 pour les exemples ci-dessous.&lt;/p&gt;
+&lt;p&gt;De base, mon système était installé avec les locales françaises:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;root@isengard:~# printenv | grep LANG &lt;span class="nv"&gt;LANG&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;fr_FR.UTF-8
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Je désirais passer mon environnement sous locale EN pour de multiples
+raisons. Les opérations à effectuer sont très simples:&lt;/p&gt;
+&lt;p&gt;​1. Rajouter la locale désirée dans le fichier
+/var/lib/locales/supported.d/local avec votre éditeur préféré (vi
+forcément).&lt;/p&gt;
+&lt;p&gt;​2. Régénérer la liste des locales supportées:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;root@isengard:~# dpkg-reconfigure locales
+    Generating locales...
+    en_AG.UTF-8... up-to-date
+    en_AU.UTF-8... up-to-date
+    en_BW.UTF-8... up-to-date
+    en_CA.UTF-8... up-to-date
+    en_DK.UTF-8... up-to-date
+    en_GB.UTF-8... up-to-date
+    en_HK.UTF-8... up-to-date
+    en_IE.UTF-8... up-to-date
+    en_IN.UTF-8... up-to-date
+    en_NG.UTF-8... up-to-date
+    en_NZ.UTF-8... up-to-date
+    en_PH.UTF-8... up-to-date
+    en_SG.UTF-8... up-to-date
+    en_US.UTF-8... up-to-date
+    en_ZA.UTF-8... up-to-date
+    en_ZM.UTF-8... up-to-date
+    en_ZW.UTF-8... up-to-date
+    fr_BE.UTF-8... up-to-date
+    fr_CA.UTF-8... up-to-date
+    fr_CH.UTF-8... up-to-date
+    fr_FR.UTF-8... up-to-date
+    fr_LU.UTF-8... up-to-date
+    Generation complete.
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;​3. Editer le fichier /etc/default/locale et rajoutez la locale de votre
+choix (dans mon cas j’ai ajouté LANG= »en_GB.UTF-8″).&lt;/p&gt;
+&lt;p&gt;​4. Redémarrez votre serveur.&lt;/p&gt;
+&lt;p&gt;​5. Enjoy !&lt;/p&gt;</summary><category term="linux"></category><category term="locale"></category></entry><entry><title>Tester les performances de ses disques</title><link href="http://cyrilb.me/tester-les-performances-de-ses-disques.html" rel="alternate"></link><updated>2012-10-23T11:11:00+02:00</updated><author><name>cyrilb</name></author><id>tag:cyrilb.me,2012-10-23:tester-les-performances-de-ses-disques.html</id><summary type="html">&lt;p&gt;Je suis en train de changer d’hébergeur, du coup je me retrouve à tester
+des serveurs différents de ceux que j’ai actuellement. Afin de m’assurer
+de la performance du nouveau matériel qu’on me propose, je déroule ces
+trois petits tests unitaires qui me permettent en moins de 20 minutes de
+voir si la puissance I/O fournie est suffisante pour ce que je veux en
+faire, de manière certes grossière mais pragmatique.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;1. Tests avec DD (Dédé pour les intimes).&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;C’est le premier tests que je lance, et le plus basique. Il me permet de
+tester la vitesse d’écriture d’un bloc de 1M (bs=1M) en prenant en
+compte la synchronisation des données entre la mémoire et le disque
+(conv=fdatasync physically write output file data before finishing).
+Simple et efficace, ça me donne tout de suite un premier indicateur. Ne
+pas hésiter à jouer avec la taille du bloc bien sûr.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;root@mirkwood:~# dd &lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;/dev/zero &lt;span class="nv"&gt;of&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="nb"&gt;test &lt;/span&gt;&lt;span class="nv"&gt;bs&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;1M &lt;span class="nv"&gt;count&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;1024 &lt;span class="nv"&gt;conv&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;fdatasync
+1024+0 records in
+1024+0 records out
+1073741824 bytes &lt;span class="o"&gt;(&lt;/span&gt;1,1 GB&lt;span class="o"&gt;)&lt;/span&gt; copied, 8,46055 s, 127 MB/s
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;&lt;strong&gt;2. Tests avec hdparm&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Nous allons maintenant tester la vitesse de lecture grâce à hdparm.
+Option intéressante, hdparm permet de tester la lecture depuis le cache
+du disque (option -t).&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;root@mirkwood:~# hdparm -t -T /dev/sda
+/dev/sda:
+Timing cached reads: 12532 MB in 2.00 &lt;span class="nv"&gt;seconds&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; 6270.87 MB/sec
+Timing buffered disk reads: 742 MB in 3.00 &lt;span class="nv"&gt;seconds&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; 247.13 MB/sec
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;&lt;strong&gt;3. Derniers tests avec IoZone.&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;On termine avec la Rolls des tests I/O: iozone. En plus de proposer des
+options vraiment sexy comme le re-read ou le re-write, sans parler du
+random read et random write, il permet d’exporter les résultats du bench
+sous format xls qui permettra d’importer vers excel et d’en faire des
+beaux tableaux. Iozone est vraiment bien fait, et fourmille d’options.
+pour ma part, je me contente généralement d’un (je vous laisse faire un
+iozone -h):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;root@mirkood:~/iozone3_394/src/current# ./iozone -a -i 0 -i 1 -b mirkwood.xls
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;A vous de jouer maintenant, et surtout, n’oubliez pas que le type de FS
+est primordial (vous n’obtiendrez pas les mêmes résultats entre du ext4
+et du XFS par exemple).&lt;/p&gt;</summary><category term="hdparm"></category><category term="iostat"></category></entry></feed>

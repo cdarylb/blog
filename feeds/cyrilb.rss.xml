@@ -1,0 +1,1266 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Trajectoires d'un admin</title><link>http://cyrilb.me/</link><description></description><atom:link href="http://cyrilb.me/feeds/cyrilb.rss.xml" rel="self"></atom:link><lastBuildDate>Fri, 09 May 2014 09:19:00 +0200</lastBuildDate><item><title>Haproxy et les logs</title><link>http://cyrilb.me/haproxy-et-les-logs.html</link><description>&lt;p&gt;Utiliser HaProxy sans activer les logs  et savoir les lire, c'est comme
+être une fille et ne pas avoir de shampooing. Voici quelques clefs pour
+y voir un peu plus clair. Ce billet ne parlera que des logs HTTP, mais
+c'est plus ou moins la même chose pour TCP.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;1. Activer les logs&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Ca se fait en deux secondes.&lt;/p&gt;
+&lt;p&gt;Dans la section 'global' on ajoute :&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;log /dev/log local0 info
+log /dev/log local0 notice
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Je pourrai bien sûr les renvoyer directement sur un serveur de logs genre :&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;log 10.17.9.5 notice
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Dans la section 'default' on ajoute (optionnel) :&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;option log-health-checks
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;On se rend ensuite dans /etc/rsyslog.d (pour les utilisateurs de Ubuntu)
+et on crée le fichier haproxy.conf :&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$programname&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;haproxy&amp;#39;&lt;/span&gt; and &lt;span class="nv"&gt;$syslogseverity&lt;/span&gt;-text &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;info&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;)&lt;/span&gt; &lt;span class="k"&gt;then&lt;/span&gt; -/var/log/haproxy/haproxy-info.log
+&amp;amp; ~
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$programname&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;haproxy&amp;#39;&lt;/span&gt; and &lt;span class="nv"&gt;$syslogseverity&lt;/span&gt;-text &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;notice&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;)&lt;/span&gt; &lt;span class="k"&gt;then&lt;/span&gt; -/var/log/haproxy/haproxy-notice.log
+&amp;amp; ~
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Comme on veut faire les choses bien, on va configurer la rotation des
+logs générés par haproxy avec logrotate. Il suffit de se rendre dans
+/etc/logrotate.d/ et de créer le fichier haproxy :&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;/var/log/haproxy/haproxy-*.log &lt;span class="o"&gt;{&lt;/span&gt;
+    missingok
+    notifempty
+    sharedscripts
+    rotate 14
+    daily
+    compress
+    postrotate
+    reload rsyslog &amp;gt;/dev/null 2&amp;gt;&amp;amp;1 &lt;span class="o"&gt;||&lt;/span&gt; &lt;span class="nb"&gt;true&lt;/span&gt;
+&lt;span class="nb"&gt;    &lt;/span&gt;endscript
+    &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Une fois tout cela effectué, relancez haproxy/syslog/votre chien pour
+que toutes les modifications soient prises en compte.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;2. Comment lire les logs&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Voici à quoi ressemble une ligne de logs dans haproxy :&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;lb1 haproxy&lt;span class="o"&gt;[&lt;/span&gt;7112&lt;span class="o"&gt;]&lt;/span&gt;: 157.56.92.164:41073 &lt;span class="o"&gt;[&lt;/span&gt;09/May/2014:09:06:59.112&lt;span class="o"&gt;]&lt;/span&gt; main webback/web3 0/0/0/298/298 200 9041 - - --NI 11/11/0/0/0 0/0 &lt;span class="s2"&gt;&amp;quot;GET /fr/heros/menage/bulligny-54113/121324 HTTP/1.1&amp;quot;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;C'est vraiment bluffant de constater à quel niveau de détail on peut
+descendre dans cette ligne de logs. Voici à quoi chaque segment
+correspond.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;lb1&lt;/strong&gt; : Le hostname du serveur qui a écrit le log.&lt;br /&gt;
+&lt;strong&gt;haproxy[7112]&lt;/strong&gt; : Le nom du process/PID qui a écrit le log.&lt;br /&gt;
+&lt;strong&gt;157.56.92.164:41073&lt;/strong&gt; : L'adresse IP du client + PORT&lt;br /&gt;
+&lt;strong&gt;[09/May/2014:09:06:59.112]&lt;/strong&gt; : L'accept date du log&lt;br /&gt;
+&lt;strong&gt;main&lt;/strong&gt; : Nom du frontend&lt;br /&gt;
+&lt;strong&gt;webback/web3&lt;/strong&gt; : Backend/serveur qui a servi la requête&lt;br /&gt;
+&lt;strong&gt;0/0/0/298/298&lt;/strong&gt; : Ca se corse avec ces 5 champs, nous pouvons les
+segmenter comme suit&lt;br /&gt;
+&lt;strong&gt;Tq&lt;/strong&gt; : Le temps passé en ms de la requête http du client&lt;br /&gt;
+&lt;strong&gt;Tw&lt;/strong&gt; : Le temps passé en ms d'attente des queues si il y en a&lt;br /&gt;
+&lt;strong&gt;Tc&lt;/strong&gt; : Le temps passé en ms d'attente de connexion au serveur&lt;br /&gt;
+&lt;strong&gt;Tr&lt;/strong&gt; : Le temps en ms d'envoi de la réponse du serveur vers le
+client&lt;br /&gt;
+&lt;strong&gt;Tt&lt;/strong&gt; : Le temps total de parcours entre l'ouverture de connexion et
+la fermeture de la connexion&lt;br /&gt;
+&lt;strong&gt;200&lt;/strong&gt; : Code retour http&lt;br /&gt;
+&lt;strong&gt;9041&lt;/strong&gt; : Nombre total de bits transmis au client&lt;br /&gt;
+&lt;strong&gt;-&lt;/strong&gt; : captured_request_cookie&lt;br /&gt;
+&lt;strong&gt;-&lt;/strong&gt; : captured_response_cookie&lt;br /&gt;
+&lt;strong&gt;--NI&lt;/strong&gt; : Comment la session s'est terminée, "termination_state", j'y
+reviendrai un autre jour, là j'ai piscine.&lt;br /&gt;
+&lt;strong&gt;11/11/0/0/0&lt;/strong&gt; : On peut segmenter ce tronçon comme suit&lt;br /&gt;
+&lt;strong&gt;actonn&lt;/strong&gt; : Le nombre total de connexions lorsque la session a été
+loggée&lt;br /&gt;
+&lt;strong&gt;feconn&lt;/strong&gt; : Le nombre total de connexions sur le frontend&lt;br /&gt;
+&lt;strong&gt;beconn&lt;/strong&gt; : Le nombre total de connexions sur le backend&lt;br /&gt;
+&lt;strong&gt;srv_conn&lt;/strong&gt; : Le nombre de connexions actives sur le serveur&lt;br /&gt;
+&lt;strong&gt;retries&lt;/strong&gt; : Le nombre de connexions qu'il a fallu pour se connecter
+au serveur&lt;br /&gt;
+&lt;strong&gt;0/0&lt;/strong&gt; Découpage comme suit&lt;br /&gt;
+&lt;strong&gt;srv_queue&lt;/strong&gt; : Nombre de requêtes qu'il a fallu passer avant de se
+connecter au serveur.&lt;br /&gt;
+&lt;strong&gt;backend_queue&lt;/strong&gt; : Nombre de requêtes qu'il a fallu passer avant de
+se connecter au backend.&lt;br /&gt;
+&lt;strong&gt;"GET /fr/heros/menage/bulligny-54113/121324 HTTP/1.1"&lt;/strong&gt; : Notre
+requête HTTP.&lt;/p&gt;
+&lt;p&gt;Hey, le format des logs ne vous convient pas ? Pas de problèmes, vous
+pouvez en changer aisément. Mettons que par exemple vous ne désiriez
+logger que l'adresse IP du client et la requête HTTP, la directive
+log-format permet de le faire :&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;log-format %ci %r
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Toutes ces variables sont bien sûres accessibles dans la documentation
+de haproxy.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;3. Analyser les logs de haproxy grâce à halog&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;C'est là que ça devient intéressant grâce à halog. Pour l'instant il
+faut l'installer en se rendant dans les sources de
+haproxy/contrib/halog.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;root@corniaud:/usr/local/src/haproxy-1.5-dev22/contrib/halog# make
+gcc -O3  -o halog -I../../include -I../../ebtree ../../ebtree/ebtree.c ../../ebtree/eb32tree.c ../../ebtree/eb64tree.c ../../ebtree/ebmbtree.c ../../ebtree/ebsttree.c ../../ebtree/ebistree.c ../../ebtree/ebimtree.c halog.c fgets2.c
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Une fois halog installé (vous pouvez en faire un lien symbolique vers
+/usr/bin) voici quelques exemples de ce que halog permet de faire :&lt;/p&gt;
+&lt;p&gt;Voir les derniers messages d'erreur tirés des logs de haproxy :&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;cat /var/log/haproxy/haproxy-info.log | halog -e
+May  6 11:25:04 lb2 haproxy&lt;span class="o"&gt;[&lt;/span&gt;7112&lt;span class="o"&gt;]&lt;/span&gt;: 82.236.50.216:53111 &lt;span class="o"&gt;[&lt;/span&gt;06/May/2014:11:25:03.191&lt;span class="o"&gt;]&lt;/span&gt; main~ webback/web2 64/0/0/-1/1373 -1 0 - - CHVN 31/31/0/0/0 0/0 &lt;span class="s2"&gt;&amp;quot;POST /up/account/pic/upload HTTP/1.1&amp;quot;&lt;/span&gt;
+May  6 11:29:19 lb2 haproxy&lt;span class="o"&gt;[&lt;/span&gt;7112&lt;span class="o"&gt;]&lt;/span&gt;: 80.12.100.198:7300 &lt;span class="o"&gt;[&lt;/span&gt;06/May/2014:11:29:18.555&lt;span class="o"&gt;]&lt;/span&gt; main~ webback/web3 1399/0/-1/-1/1399 503 212 - - CCVN 38/38/0/0/0 0/0 &lt;span class="s2"&gt;&amp;quot;GET /f/pics/user_3263079/big_9cid38215a7f2177ed95106e78754d69b088d06b1.jpeg HTTP/1.1&amp;quot;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;En tirer carrément des stats sur le nombre de hits, de temps de réponse,
+de codes retours http, etc...&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;root@lb2:~# cat /var/log/haproxy/haproxy-info.log | halog -srv -H -q | awk &lt;span class="s1"&gt;&amp;#39;NR==1; NR&amp;gt;1 { print $0 | &amp;quot;sort -k12rn,12&amp;quot;}&amp;#39;&lt;/span&gt; | column -t
+&lt;span class="c"&gt;#srv_name               1xx  2xx    3xx   4xx   5xx  other  tot_req  req_ok  pct_ok  avg_ct  avg_rt&lt;/span&gt;
+fuel1/monitor02          0    2023   37    0     0    0      2060     2060    100.0   0       131
+webback/web3            0    16286  1940  37    12   3      18278    18265   99.9    1       70
+webback/web2            0    15574  1992  33    4    3      17606    17602   100.0   1       63
+dagobah/lb2              0    447    0     0     0    0      447      447     100.0   0       53
+webback/web1            0    17000  1831  36    5    1      18873    18867   100.0   1       47
+badcountry/maintenance  0    2      0     12    0    0      14       14      100.0   0       0
+main/&amp;lt;NOSRV&amp;gt;            0    0      0     3650  0    0      3650     0       0.0     0       0
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;On peut vraiment tout faire, je vous laisse découvrir la suite, mais
+c'est l'outil idéal pour tracker les erreurs 50x par exemple ou trouver
+un mouton noir dans votre cluster de serveurs.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;4. Aller (un peu) plus loin avec les logs de haproxy.&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Vous vous en êtes rendu compte, même si de base, les logs sont
+pleinement exploitables, on peut ajouter d'autres infos, par exemple (à
+mettre dans votre frontend par exemple) :&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;capture request header Referer               len 64
+capture request header User-Agent            len 128
+capture request header Host                  len 64
+capture request header X-Forwarded-For       len 64
+capture request header Accept-Encoding       len 64
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;C'est assez parlant non ? On peut aller encore plus loin (l'exemple
+parle de lui même une fois de plus) :&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;capture response header X-WebApp-Id     len 5
+capture response header X-Req-My-Uid       len 36
+rspidel ^&lt;span class="o"&gt;(&lt;/span&gt;X-WebApp-Id|Server|X-Req-My-Uid&lt;span class="o"&gt;)&lt;/span&gt;:
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Le prochain billet sera certainement consacré aux "termination_states"
+qui sont indispensables.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">cyrilb</dc:creator><pubDate>Fri, 09 May 2014 09:19:00 +0200</pubDate><guid>tag:cyrilb.me,2014-05-09:haproxy-et-les-logs.html</guid><category>haproxy</category><category>logs</category></item><item><title>Empêcher un utilisateur d'accéder à vos backends avec haproxy</title><link>http://cyrilb.me/Block-user.html</link><description>&lt;p&gt;Empêcher un utilisateur d'accéder à votre site internet qui est derrière
+&lt;a href="http://haproxy.1wt.eu/" title="Haproxy homepage"&gt;haproxy&lt;/a&gt; est très simple, et
+autant le bloquer directement depuis haproxy.&lt;/p&gt;
+&lt;p&gt;Une fois encore, la souplesse des acl de haproxy permet de le faire en
+30 secondes.&lt;/p&gt;
+&lt;p&gt;Exemple pour bannir une adresse ip :&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;acl bad_ip src www.xxx.yyy.zzz
+tcp-request connection reject &lt;span class="k"&gt;if &lt;/span&gt;bad_ip
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;On peut bien sûr remplacer l'adresse ip par une liste d'ip stockées dans
+un fichier plat :&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;acl bad_ip src -f /opt/blacklist.txt
+tcp-request connection reject &lt;span class="k"&gt;if &lt;/span&gt;bad_ip
+&lt;/pre&gt;&lt;/div&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">cyrilb</dc:creator><pubDate>Fri, 14 Mar 2014 13:30:00 +0100</pubDate><guid>tag:cyrilb.me,2014-03-14:Block-user.html</guid><category>acl</category><category>haproxy</category></item><item><title>Mutualiser ses logs</title><link>http://cyrilb.me/mutualiser-ses-logs.html</link><description>&lt;p&gt;Lorqu’on a plusieurs serveurs (webs, mysql, etc), il devient compliqué
+d’aller d’une machine à l’autre pour s’assurer que tout va bien ou pour
+déceler un problème qui affecte l’ensemble de votre infrastructure.&lt;/p&gt;
+&lt;p&gt;C’est pour cela, qu’en plus de stocker les logs individuellement sur
+chaque serveur, il est fortement recommandé de les exporter sur un
+serveur dédié et de les mutualiser afin de pouvoir effectuer des
+traitement groupés sur l’ensemble des logs à notre disposition.&lt;/p&gt;
+&lt;p&gt;Et comme tout bon admin, qui dit traitement mutualisé dit traitements
+industrialisés.&lt;/p&gt;
+&lt;p&gt;Nous allons voir ici deux façons de mutualiser les logs nginx de ses
+frontaux webs pour l’exemple, sans trop rentrer dans le détail, la
+première avec Rsyslog, la seconde avec logstash.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Mutualiser ses logs nginx avec Rsyslog:&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href="http://www.rsyslog.com/" title="RSyslog"&gt;Rsyslog&lt;/a&gt; est propulsé de base avec
+Ubuntu, rien à configurer donc, ça tourne déjà, on va donc se contenter
+de configurer rsyslog afin de parser les logs nginx et de les envoyer au
+serveur qui va mutualiser les logs.&lt;/p&gt;
+&lt;p&gt;Sur les serveurs webs, rajouter le fichier nginx.conf dans
+/etc/rsyslog.d/&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nv"&gt;$ModLoad&lt;/span&gt; imfile
+
+&lt;span class="nv"&gt;$InputFileName&lt;/span&gt;          /usr/local/nginx/logs/access.log
+&lt;span class="nv"&gt;$InputFileTag&lt;/span&gt;           nginx_access_log:
+&lt;span class="nv"&gt;$InputFileStateFile&lt;/span&gt;     nginx_access_log
+&lt;span class="nv"&gt;$InputFileSeverity&lt;/span&gt;      info
+&lt;span class="nv"&gt;$InputFileFacility&lt;/span&gt;      user
+&lt;span class="nv"&gt;$InputRunFileMonitor&lt;/span&gt;
+
+&lt;span class="nv"&gt;$InputFileName&lt;/span&gt;          /usr/local/nginx/logs/error.log
+&lt;span class="nv"&gt;$InputFileTag&lt;/span&gt;           nginx_error_log:
+&lt;span class="nv"&gt;$InputFileStateFile&lt;/span&gt;     nginx_error_log
+&lt;span class="nv"&gt;$InputFileSeverity&lt;/span&gt;      info
+&lt;span class="nv"&gt;$InputFileFacility&lt;/span&gt;      user
+&lt;span class="nv"&gt;$InputRunFileMonitor&lt;/span&gt;
+
+&lt;span class="c"&gt;# lit le fichier de log toutes les deux secondes&lt;/span&gt;
+&lt;span class="nv"&gt;$InputFilePollingInterval&lt;/span&gt; 2
+
+&lt;span class="c"&gt;#envoie les logs en tcp a 192.168.1.15 port 1025&lt;/span&gt;
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="nv"&gt;$syslogtag&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;nginx_access_log:&amp;#39;&lt;/span&gt; &lt;span class="k"&gt;then&lt;/span&gt; @@&lt;span class="o"&gt;(&lt;/span&gt;z9&lt;span class="o"&gt;)&lt;/span&gt;192.168.1.15:1025
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="nv"&gt;$syslogtag&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;nginx_error_log:&amp;#39;&lt;/span&gt; &lt;span class="k"&gt;then&lt;/span&gt; @@&lt;span class="o"&gt;(&lt;/span&gt;z9&lt;span class="o"&gt;)&lt;/span&gt;192.168.1.15:1025
+
+&lt;span class="c"&gt;#ne log pas ce qui est taggé nginx (pour ne pas logger en double)&lt;/span&gt;
+:syslogtag, contains, &lt;span class="s2"&gt;&amp;quot;nginx&amp;quot;&lt;/span&gt; ~
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Sur le serveur qui recevra les logs, on s’assurera d’avoir au minimum
+ces directives dans /etc/rsyslog.conf (à personnaliser suivant votre
+configuration)&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nv"&gt;$FileOwner&lt;/span&gt; logz
+&lt;span class="nv"&gt;$FileGroup&lt;/span&gt; log-prod
+
+&lt;span class="nv"&gt;$CreateDirs&lt;/span&gt; on
+&lt;span class="nv"&gt;$FileCreateMode&lt;/span&gt; 0640
+&lt;span class="nv"&gt;$DirCreateMode&lt;/span&gt; 0755
+&lt;span class="nv"&gt;$Umask&lt;/span&gt; 0022
+
+&lt;span class="nv"&gt;$ModLoad&lt;/span&gt; imtcp
+&lt;span class="nv"&gt;$InputTCPServerRun&lt;/span&gt; 1025
+&lt;span class="nv"&gt;$AllowedSender&lt;/span&gt; TCP, 127.0.0.1, 192.168.1.0/24
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Puis on crée un fichier nginx.conf sous /etc/rsyslog.d/ :&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="nv"&gt;$template&lt;/span&gt; nginx_access_log,&lt;span class="s2"&gt;&amp;quot;/home/logz/remote/%$YEAR%/%$MONTH%/%$DAY%/%HOSTNAME%/nginx.access.log&amp;quot;&lt;/span&gt;
+&lt;span class="nv"&gt;$template&lt;/span&gt; nginx_error_log,&lt;span class="s2"&gt;&amp;quot;/home/logz/remote/%$YEAR%/%$MONTH%/%$DAY%/%HOSTNAME%/nginx.error.log&amp;quot;&lt;/span&gt;
+
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="nv"&gt;$syslogtag&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;nginx_access_log:&amp;#39;&lt;/span&gt;         &lt;span class="k"&gt;then&lt;/span&gt; ?nginx_access_log
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="nv"&gt;$syslogtag&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;nginx_access_log:&amp;#39;&lt;/span&gt;         &lt;span class="k"&gt;then&lt;/span&gt; ~
+
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="nv"&gt;$syslogtag&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;nginx_error_log:&amp;#39;&lt;/span&gt;                   &lt;span class="k"&gt;then&lt;/span&gt; ?nginx_error_log
+&lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="nv"&gt;$syslogtag&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;nginx_error_log:&amp;#39;&lt;/span&gt;                   &lt;span class="k"&gt;then&lt;/span&gt; ~
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Il suffit maintenant de reloader rsyslog sur les serveurs nginx et sur
+le « master » et magie, les logs de vos frontaux webs apparaitront dans
+le répertoire /home/logs/remote/.&lt;/p&gt;
+&lt;p&gt;On peut aller encore beaucoup plus loin, comme envoyer les logs
+directement dans une base mysql, ou encore faire transiter les logs via
+un fichier fifo pour ne pas avoir à les écrire sur nos serveurs webs et
+économiser autant d’ios, ça se fait tout aussi facilement à partir de
+rsyslog sans trop d’efforts et avec un minimum d’efforts.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Mutualiser ses logs avec logstash, redis et Elasticsearch&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;La solution des hipsters, des vrais. Le gros avantage de jouer avec
+logstash c’est qu’on s’absout des contraintes liées au local*, on log
+donc ce qu’on veut.&lt;/p&gt;
+&lt;p&gt;Dans l’exemple ci-dessous, on va parser les logs
+avec &lt;a href="http://logstash.net/" title="logstash"&gt;logstash&lt;/a&gt;, les envoyer sur une
+instance &lt;a href="http://redis.io/" title="redis"&gt;redis&lt;/a&gt;, et les manipuler
+avec &lt;a href="http://www.elasticsearch.org/" title="Elasticsearch"&gt;Elasticsearch&lt;/a&gt; avec
+une couche de &lt;a href="http://three.kibana.org/" title="Kibana3"&gt;Kibana&lt;/a&gt; comme web
+front end à Elasticsearch.&lt;/p&gt;
+&lt;p&gt;Sur tous vos frontaux webs (après avoir installé l’openjdk, java
+oblige):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;wget http://logstash.objects.dreamhost.com/release/logstash-1.1.13-flatjar.jar
+mkdir -p /usr/local/bin/logstash
+mv logstash-1.1.13-flatjar.jar /usr/local/bin/logstash/logstash.jar
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;div class="highlight"&gt;&lt;pre&gt;vi /etc/logstash.conf
+
+input &lt;span class="o"&gt;{&lt;/span&gt;
+ file &lt;span class="o"&gt;{&lt;/span&gt;
+ &lt;span class="nb"&gt;type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;nginx_access&amp;quot;&lt;/span&gt;
+ &lt;span class="nv"&gt;path&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="o"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/usr/local/nginx/logs/access.log&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;]&lt;/span&gt;
+ &lt;span class="nv"&gt;discover_interval&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; 10
+ &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;span class="o"&gt;}&lt;/span&gt;
+
+input &lt;span class="o"&gt;{&lt;/span&gt;
+ file &lt;span class="o"&gt;{&lt;/span&gt;
+ &lt;span class="nb"&gt;type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;nginx_error&amp;quot;&lt;/span&gt;
+ &lt;span class="nv"&gt;path&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="o"&gt;[&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;/usr/local/nginx/logs/error.log&amp;quot;&lt;/span&gt;&lt;span class="o"&gt;]&lt;/span&gt;
+ &lt;span class="nv"&gt;discover_interval&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; 10
+ &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;span class="o"&gt;}&lt;/span&gt;
+
+filter &lt;span class="o"&gt;{&lt;/span&gt;
+ grok &lt;span class="o"&gt;{&lt;/span&gt;
+ &lt;span class="nb"&gt;type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; nginx_access
+ &lt;span class="nv"&gt;pattern&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;%{COMBINEDAPACHELOG}&amp;quot;&lt;/span&gt;
+ &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;span class="o"&gt;}&lt;/span&gt;
+
+filter &lt;span class="o"&gt;{&lt;/span&gt;
+ grok &lt;span class="o"&gt;{&lt;/span&gt;
+ &lt;span class="nb"&gt;type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; nginx_error
+ &lt;span class="nv"&gt;pattern&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;%{COMBINEDAPACHELOG}&amp;quot;&lt;/span&gt;
+ &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;span class="o"&gt;}&lt;/span&gt;
+
+output &lt;span class="o"&gt;{&lt;/span&gt;
+ redis &lt;span class="o"&gt;{&lt;/span&gt; &lt;span class="nv"&gt;host&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;10.17.9.12&amp;quot;&lt;/span&gt; &lt;span class="nv"&gt;data_type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;list&amp;quot;&lt;/span&gt; &lt;span class="nv"&gt;key&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;logstash&amp;quot;&lt;/span&gt; &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;span class="o"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Puis hop, on lance logstash:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;/usr/bin/java -jar /usr/local/bin/logstash/logstash.jar agent -f /etc/logstash.conf -w 1
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Je vous conseille d’écrire un script d’init ou d’en récupérer un.&lt;/p&gt;
+&lt;p&gt;Rendez-vous ensuite sur le serveur qui accueillera vos logs, et on
+installe &lt;a href="http://www.elasticsearch.org/" title="elasticsearch"&gt;elasticsearch&lt;/a&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;wget https://download.elasticsearch.org/elasticsearch/elasticsearch/elasticsearch-0.90.1.zip
+unzip elasticsearch-0.90.1.zip
+rm -rf elasticsearch-0.90.1.zip
+mv elasticsearch-0.90.1 elasticsearch
+sudo mv elasticsearch /usr/local/share
+&lt;span class="nb"&gt;cd&lt;/span&gt; /usr/local/share
+sudo chmod 755 elasticsearch
+&lt;span class="nb"&gt;cd&lt;/span&gt; &lt;span class="nv"&gt;$HOME&lt;/span&gt;
+curl -L http://github.com/elasticsearch/elasticsearch-servicewrapper/tarball/master | tar -xz
+mv *servicewrapper*/service /usr/local/share/elasticsearch/bin/
+rm -Rf *servicewrapper*
+/usr/local/share/elasticsearch/bin/service/elasticsearch install
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;On installe ensuite Redis (un simple apt-get install redis-server
+suffit).&lt;/p&gt;
+&lt;p&gt;Puis installation de logstash et on renseigne le fichier de conf:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;input &lt;span class="o"&gt;{&lt;/span&gt;
+ redis &lt;span class="o"&gt;{&lt;/span&gt;
+ &lt;span class="nv"&gt;host&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;127.0.0.1&amp;quot;&lt;/span&gt;
+ &lt;span class="nv"&gt;port&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; 6379
+ &lt;span class="nb"&gt;type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;redis-input&amp;quot;&lt;/span&gt;
+ &lt;span class="nv"&gt;data_type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;list&amp;quot;&lt;/span&gt;
+ &lt;span class="nv"&gt;key&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;logstash&amp;quot;&lt;/span&gt;
+ &lt;span class="nv"&gt;format&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;json_event&amp;quot;&lt;/span&gt;
+ &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;span class="o"&gt;}&lt;/span&gt;
+output &lt;span class="o"&gt;{&lt;/span&gt;
+ elasticsearch &lt;span class="o"&gt;{&lt;/span&gt;
+ &lt;span class="nv"&gt;host&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt;&amp;amp;gt; &lt;span class="s2"&gt;&amp;quot;10.17.9.12&amp;quot;&lt;/span&gt;
+ &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;span class="o"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Et comme on est trop des hipsters, on
+installe &lt;a href="http://three.kibana.org/intro.html" title="Kibana3"&gt;Kibana3&lt;/a&gt; qui va
+nous permettre de taper notre ES comme des swags.&lt;/p&gt;
+&lt;p&gt;Si vous avez bien tout suivi, vous aurez accès à un joli dashboard très
+pratique.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">cyrilb</dc:creator><pubDate>Tue, 10 Dec 2013 19:20:00 +0100</pubDate><guid>tag:cyrilb.me,2013-12-10:mutualiser-ses-logs.html</guid><category>kibana</category><category>linux</category><category>logs</category><category>logstash</category><category>rsyslog</category><category>syslog</category></item><item><title>Infrastructure de FamiHero Partie 1</title><link>http://cyrilb.me/45.html</link><description>&lt;p&gt;Mettre en place une infrastructure, ça peut faire peur. Par où
+commencer? Avec quelles briques? De quoi ai-je vraiment besoin? Et si je
+testais le dernier système de cache à la mode?&lt;/p&gt;
+&lt;p&gt;J’ai compris que je m’éparpillais trop, je suis donc revenu aux
+basiques, grâce au conseil tout simple d’un ancien collègue: « Fais ce
+que tu sais faire ». A partir de là, ça a été un jeu d’enfants, et j’ai
+compris que ça m’aurait pris un temps fou d’acquérir de nouvelles
+compétences sur des sujets que je ne maitrisais pas du tout, et que mon
+expérience était largement suffisante pour mettre en place une
+architecture telle que je les aime:&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;&lt;em&gt;- Entièrement Scalable&lt;/em&gt;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;&lt;em&gt;- Hautement disponible&lt;/em&gt;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;&lt;em&gt;- KISS (Keep It Simple Stupid)&lt;/em&gt;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Le but de ce post est de vous faire partager la mise en place de
+l’infrastructure chez FamiHero, de manière pragmatique, sans trop
+rentrer dans le détail en général mais en approfondissant certains
+points. Je pense que certains vieux admins, bien plus compétents que
+moi, souriront devant la naïveté de certains passages, mais j’aime
+imaginer que cela pourra rendre service à certains admins junior.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;1. L’infrastructure en elle même, première partie&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;&lt;br /&gt;
+&lt;/strong&gt;Comme vous pouvez le constater, c’est du grand classique, qui n’a pas
+le mérite d’innover, mais de répondre à mes besoins. On va se concentrer
+sur le load-balancing qui va aller taper nos frontaux pour commencer.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;2. Load Balancers et ip flottante&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Si on met de côté les load-balancers de type hard (Cisco, f5, etc), je
+ne connais que trois solutions qui font le travail:&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;- Varnish&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Varnish a des possibilités vraiment intéressantes pour faire du load
+balancing grâce à un système de backends vraiment simples à gérer. On y
+retrouve du très courants avec des priorités, des poids, des health
+check etc… Le soucis, c’est que c’est avant tout un formidable système
+de cache, et que je préfère l’utiliser pour sa fonction première, le
+cache, qui a du faire preuve de plus d’attention par ses développeurs.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;- Nginx&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Nginx, non content d’être un excellent serveur web, peut aussi
+s’ennorgueuilir d’être un excellent load balancer qui fonctionne à
+merveille. On verra un peu plus loin que je m’en sers pour faire un peu
+de proxy-pass.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;- Haproxy&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;La Rolls Royce des loads balancers. Mon choix s’est bien sûr porté sur
+lui parce que je m’en suis déjà servi pas mal de temps chez Twenga; je
+sais donc qu’il répond à mes besoins et qu’il a des milliers d’options
+super sympas.&lt;/p&gt;
+&lt;p&gt;On commence par récupérer les sources. La version stable actuelle est la
+1.4.22 mais pour ma part je suis sur la branche de développement, la
+1.5.*. Suivez avec attention la mailling-list de haproxy, elle regorge
+de détails pratiques sur les branches en développement. L’intérêt de la
+branche 1.5 est qu’elle embarque l’offloading en SSL, on y reviendra un
+peu plus loin.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Récupération des sources et installation&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;cyril@lb2:~&lt;span class="nv"&gt;$ &lt;/span&gt;&lt;span class="nb"&gt;cd&lt;/span&gt; /usr/local/src/
+cyril@lb2:/usr/local/src&lt;span class="nv"&gt;$ &lt;/span&gt;sudo apt-get install make gcc libpcre3-dev libssl-dev
+cyril@lb2:/usr/local/src&lt;span class="nv"&gt;$ &lt;/span&gt;wget http://haproxy.1wt.eu/download/1.5/src/snapshot/haproxy-ss-20120905.tar.gz
+cyril@lb2:/usr/local/src&lt;span class="nv"&gt;$ &lt;/span&gt;tar xfz haproxy-ss-20120905.tar.gz
+cyril@lb2:/usr/local/src&lt;span class="nv"&gt;$ &lt;/span&gt;&lt;span class="nb"&gt;cd &lt;/span&gt;haproxy-ss-20120905/
+cyril@lb2:/usr/local/src&lt;span class="nv"&gt;$ &lt;/span&gt;make &lt;span class="nv"&gt;TARGET&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;linux2628 &lt;span class="nv"&gt;USE_STATIC_PCRE&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;1 &lt;span class="nv"&gt;USE_OPENSSL&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;1
+cyril@lb2:/usr/local/src&lt;span class="nv"&gt;$ &lt;/span&gt;sudo make &lt;span class="nv"&gt;PREFIX&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;/opt/haproxy-ssl install
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;&lt;strong&gt;Configuration de Haproxy&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;&lt;br /&gt;
+&lt;/strong&gt;On commence par ajouter l’utilisateur qui lancera haproxy. Choisissez
+un nom le moins générique possible.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;cyril@lb2:~&lt;span class="nv"&gt;$ &lt;/span&gt;sudo useradd bingoha
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Dans le répertoire examples vous trouverez un haproxy.cfg. A vous de
+construire le vôtre suivant vos besoins. Pour moi au final ça donne ça:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;global
+&lt;span class="c"&gt;# On renvoit info/notice vers syslog, je reviendrai un peu plus loin sur la configuration des logs haproxy avec rsyslog.&lt;/span&gt;
+log /dev/log local0 info
+log /dev/log local0 notice
+&lt;span class="c"&gt;# Total de connexions simultanées en concurrence &lt;/span&gt;
+maxconn 20000
+&lt;span class="c"&gt;#L&amp;#39;utilisateur et le groupe qui lance haproxy&lt;/span&gt;
+user bingoha
+group bingoha
+&lt;span class="c"&gt;# Création d&amp;#39;un socket unix en mode stream, me permet de chopper plein d&amp;#39;informations, voir plus loin.&lt;/span&gt;
+stats socket /var/run/haproxy.stat level admin
+&lt;span class="c"&gt;# Un mec pas commode&lt;/span&gt;
+daemon
+
+defaults
+&lt;span class="c"&gt;# Protocole par défaut de l&amp;#39;instance&lt;/span&gt;
+mode http
+&lt;span class="c"&gt;# Log par défaut, le log est émis dés qu&amp;#39;une connexion est initiée&lt;/span&gt;
+log global
+&lt;span class="c"&gt;# Renvoie une 503 ou une 504 si la connexion au serveur n&amp;#39;a pas abouti&lt;/span&gt;
+timeout connect 5s
+&lt;span class="c"&gt;# Temps maximum d&amp;#39;inactivité côté client&lt;/span&gt;
+timeout client 20s
+&lt;span class="c"&gt;# Temps maximum d&amp;#39;inactivité côté serveur&lt;/span&gt;
+timeout server 15s
+&lt;span class="c"&gt;# Un check additionnel du timeout, mais apres qu&amp;#39;une connexion ait déjà été établie.&lt;/span&gt;
+timeout check 2s
+&lt;span class="c"&gt;# Temps maximum alloué pour attendre une nouvelle connexion http&lt;/span&gt;
+timeout http-keep-alive 1s
+&lt;span class="c"&gt;# Temps maximum alloué pour attendre une requête http complète, on peut s&amp;#39;en servir comme protection contre les slowloris&lt;/span&gt;
+timeout http-request 50s
+
+&lt;span class="c"&gt;# L&amp;#39;interface web de management&lt;/span&gt;
+listen web-mgt
+&lt;span class="nb"&gt;bind &lt;/span&gt;78.109.93.62:8089
+&lt;span class="c"&gt;# Aucun intérêt de logger les connexions sans erreur&lt;/span&gt;
+option dontlog-normal
+mode http
+stats uri /haproxy
+&lt;span class="c"&gt;# On &amp;quot;protège l&amp;#39;accès à l&amp;#39;interface par un user/password&lt;/span&gt;
+stats realm STATS_WEB
+stats auth admin:4nth0nIB4uG|l
+&lt;span class="c"&gt;# Refresh des stats toutes les 15 secondes&lt;/span&gt;
+stats refresh 15s
+
+&lt;span class="c"&gt;# Notre frontend&lt;/span&gt;
+frontend http-in
+&lt;span class="c"&gt;# Ecoute sur le port 80&lt;/span&gt;
+&lt;span class="nb"&gt;bind&lt;/span&gt; *:80
+&lt;span class="c"&gt;# Activation des logs sur les requêtes et les sessions&lt;/span&gt;
+option httplog
+&lt;span class="c"&gt;# insertion du header X-Forwarded-For header aux requêtes envoyées aux serveurs&lt;/span&gt;
+option forwardfor
+&lt;span class="c"&gt;# Active la fermeture des connexions côté serveur&lt;/span&gt;
+option http-server-close
+&lt;span class="c"&gt;# C&amp;#39;est grâce à cette ligne qu&amp;#39;on peut offloader en https, je reviens dessus plus loin&lt;/span&gt;
+&lt;span class="c"&gt;#bind *:443 ssl crt /etc/stunnel/certifami/famihero.pem nosslv3 prefer-server-ciphers ciphers RC4-SHA:AES128-SHA:AES256-SHA&lt;/span&gt;
+
+&lt;span class="c"&gt;# Acl basique, tout ce qui commence par mon. ou man. est dirigé vers un backend sépcial&lt;/span&gt;
+acl acl_others hdr_beg&lt;span class="o"&gt;(&lt;/span&gt;host&lt;span class="o"&gt;)&lt;/span&gt; -i mon. man.
+use_backend www.famihero.others &lt;span class="k"&gt;if &lt;/span&gt;acl_others
+
+&lt;span class="c"&gt;# Même chose qu&amp;#39;en haut, mais sur un autre backend&lt;/span&gt;
+acl acl_vhosts hdr_beg&lt;span class="o"&gt;(&lt;/span&gt;host&lt;span class="o"&gt;)&lt;/span&gt; -i devil. dev1. dev2. ppdev1. ppdev2. sandbox.
+use_backend www.vhosts.dev &lt;span class="k"&gt;if &lt;/span&gt;acl_vhosts
+
+&lt;span class="c"&gt;# Acl basique, sert surtout de default_backend en fait&lt;/span&gt;
+acl acl_prod hdr_end famihero.com famihero.com. zenanny.com zenanny.com.
+use_backend www.famihero.com &lt;span class="k"&gt;if &lt;/span&gt;acl_prod
+
+default_backend www.famihero.com
+
+&lt;span class="c"&gt;# Le nom du backend&lt;/span&gt;
+backend www.famihero.com
+&lt;span class="c"&gt;# L&amp;#39;algo de load balancing du backend&lt;/span&gt;
+balance roundrobin
+&lt;span class="c"&gt;# Insertion d&amp;#39;un cookie&lt;/span&gt;
+cookie fami insert indirect nocache domain .famihero.com
+&lt;span class="c"&gt;# Check server health en mode http sur ce fichier (on peut tres bien utiliser un GET à la place du HEAD)&lt;/span&gt;
+option httpchk HEAD /haproxytest.txt HTTP/1.0
+&lt;span class="c"&gt;# Mes serveurs web. Un check toutes les 2 secondes et on etime qu&amp;#39;ils sont morts apres 2x2 secondes d&amp;#39;uncheck&lt;/span&gt;
+server web1 192.168.2.3:80 check inter 2000 fall 2
+server web2 192.168.2.4:80 check inter 2000 fall 2
+server web3 192.168.2.5:80 check inter 2000 fall 2
+server web4 192.168.2.13:80 check inter 2000 fall 2
+&lt;span class="c"&gt;# Le trafic est redirigé sur ce serveur web si tous les autres serveurs ne répondent plus grâce au mode backup&lt;/span&gt;
+server maintenance 127.0.0.1:8787 backup
+&lt;span class="c"&gt;# Active la redistribution de session en cas de perte de connexion sur un serveur&lt;/span&gt;
+option redispatch
+&lt;span class="c"&gt;# Utile en cas de grosse charge, permet de dropper les requêtes avortées pour qu&amp;#39;elles ne s&amp;#39;empilent pas&lt;/span&gt;
+option abortonclose
+&lt;span class="c"&gt;# Supprime des headers l&amp;#39;ip des webs&lt;/span&gt;
+rspidel ^Set-cookie:&lt;span class="se"&gt;\ &lt;/span&gt;&lt;span class="nv"&gt;IP&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;
+
+backend www.famihero.others
+server mon 192.168.2.12:80
+
+backend www.vhosts.dev
+server web3 192.168.2.5:8687
+option http-server-close
+option forwardfor
+option abortonclose
+
+&lt;span class="c"&gt;# Un autre backend, celui-ci fonctionne en mode tcp&lt;/span&gt;
+listen services
+&lt;span class="nb"&gt;bind&lt;/span&gt; *:7879
+mode tcp
+server lead3-vp.famihero.com 192.168.2.5:7879
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;&lt;strong&gt;Quelques scripts, tips and tricks.&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Voici un script que j’ai écrit pour rentrer et sortir des serveurs du
+proxy. Il est vraiment tout bête mais je m’en sers tous les jours. Il
+faudra que je trouve le temps de l’améliorer, genre rajouter une
+fonction sur les stats de trafic, etc… Il est très facilement adaptable,
+libre à vous de l’améliorer bien sûr. Vous pouvez le télécharger ICI ou
+le parcourir ci-dessous:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    &lt;span class="c"&gt;#!/bin/bash&lt;/span&gt;
+
+    &lt;span class="c"&gt;#set -e&lt;/span&gt;
+
+    &lt;span class="nv"&gt;WEBSERVER&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;$2&amp;quot;&lt;/span&gt;
+    &lt;span class="nv"&gt;SOCQUETTE&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;socat unix-connect:/var/run/haproxy.stat stdio&amp;quot;&lt;/span&gt;
+    &lt;span class="nv"&gt;SERVERS&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;web1 web2 web3 web4&amp;quot;&lt;/span&gt;
+    &lt;span class="nv"&gt;BACKEND&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;www.famihero.com&amp;quot;&lt;/span&gt;
+    &lt;span class="nv"&gt;VERT&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;\\033[1;32m&amp;quot;&lt;/span&gt;
+    &lt;span class="nv"&gt;ROUGE&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;\\033[1;31m&amp;quot;&lt;/span&gt;
+    &lt;span class="nv"&gt;NORMAL&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;\\033[0;39m&amp;quot;&lt;/span&gt;
+
+    print_help&lt;span class="o"&gt;()&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt;
+    cat &amp;amp;lt;&amp;amp;lt; EOF
+
+    Script to manage servers in HaProxy - Read README.TXT
+    Copyright &lt;span class="o"&gt;(&lt;/span&gt;c&lt;span class="o"&gt;)&lt;/span&gt; Cyril Beaufrere 
+    Version: 0.7
+    Last Modified: 10 Mars 2013
+    License: This software can be used &lt;span class="k"&gt;for &lt;/span&gt;free unless I meet you, &lt;span class="k"&gt;then &lt;/span&gt;you owe me lunch.
+
+    Usage: wwwcluster.sh -d| -e| -a| -h| -m| -s &lt;span class="o"&gt;[&lt;/span&gt;webserver&lt;span class="o"&gt;]&lt;/span&gt;
+
+    Options:
+
+    -d &lt;span class="o"&gt;[&lt;/span&gt;webserver&lt;span class="o"&gt;]&lt;/span&gt;: To disable server
+    -e &lt;span class="o"&gt;[&lt;/span&gt;webserver&lt;span class="o"&gt;]&lt;/span&gt;: To &lt;span class="nb"&gt;enable &lt;/span&gt;server
+    -a: Enable all servers
+    -h: This stupid &lt;span class="nb"&gt;help&lt;/span&gt;
+    -m: Disable all servers &lt;span class="o"&gt;(&lt;/span&gt;maintenance mode&lt;span class="o"&gt;)&lt;/span&gt;
+    -s: Show status of all web servers
+
+    EOF
+            &lt;span class="o"&gt;}&lt;/span&gt;
+
+
+    disable_server &lt;span class="o"&gt;()&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt;
+    &lt;span class="nb"&gt;echo&lt;/span&gt; -e &lt;span class="s2"&gt;&amp;quot;$ROUGE&amp;quot;&amp;quot;---------------------------------- &amp;quot;&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;$NORMAL&amp;quot;&lt;/span&gt;
+    &lt;span class="nb"&gt;echo&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;Do you want to disable $WEBSERVER? (y/n)&amp;quot;&lt;/span&gt;
+    &lt;span class="nb"&gt;echo&lt;/span&gt; -e &lt;span class="s2"&gt;&amp;quot;$ROUGE&amp;quot;&amp;quot;---------------------------------- &amp;quot;&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;$NORMAL&amp;quot;&lt;/span&gt;
+    &lt;span class="nb"&gt;read &lt;/span&gt;reponse
+     &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;[[&lt;/span&gt; &lt;span class="nv"&gt;$reponse&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;y&amp;quot;&lt;/span&gt; &lt;span class="o"&gt;]]&lt;/span&gt;
+     &lt;span class="k"&gt;then &lt;/span&gt;&lt;span class="nb"&gt;echo &lt;/span&gt;disable server &lt;span class="nv"&gt;$BACKEND&lt;/span&gt;/&lt;span class="nv"&gt;$WEBSERVER&lt;/span&gt; | &lt;span class="nv"&gt;$SOCQUETTE&lt;/span&gt;
+     sleep 2
+     &lt;span class="nb"&gt;echo &lt;/span&gt;show stat | &lt;span class="nv"&gt;$SOCQUETTE&lt;/span&gt;  | grep &lt;span class="nv"&gt;$WEBSERVER&lt;/span&gt; | grep -v check | awk -F&lt;span class="s1"&gt;&amp;#39;[,|]&amp;#39;&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;{print $2 &amp;quot; ===&amp;amp;gt; &amp;quot;$18}&amp;#39;&lt;/span&gt; &lt;span class="nv"&gt;OFS&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;,&amp;quot;&lt;/span&gt;
+    &lt;span class="k"&gt;fi&lt;/span&gt;
+&lt;span class="k"&gt;     if&lt;/span&gt; &lt;span class="o"&gt;[[&lt;/span&gt; &lt;span class="nv"&gt;$reponse&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;n&amp;quot;&lt;/span&gt; &lt;span class="o"&gt;]]&lt;/span&gt;
+     &lt;span class="k"&gt;then &lt;/span&gt;&lt;span class="nb"&gt;echo&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;###Leaving###&amp;quot;&lt;/span&gt;
+    &lt;span class="k"&gt;fi&lt;/span&gt;
+    &lt;span class="o"&gt;}&lt;/span&gt;
+
+
+    enable_server &lt;span class="o"&gt;()&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt;
+    &lt;span class="nb"&gt;echo&lt;/span&gt; -e &lt;span class="s2"&gt;&amp;quot;$VERT&amp;quot;&amp;quot;---------------------------------- &amp;quot;&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;$NORMAL&amp;quot;&lt;/span&gt;
+    &lt;span class="nb"&gt;echo&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;Do you want to enable $WEBSERVER? (y/n)&amp;quot;&lt;/span&gt;
+    &lt;span class="nb"&gt;echo&lt;/span&gt; -e &lt;span class="s2"&gt;&amp;quot;$VERT&amp;quot;&amp;quot;---------------------------------- &amp;quot;&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;$NORMAL&amp;quot;&lt;/span&gt;
+    &lt;span class="nb"&gt;read &lt;/span&gt;reponse
+     &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;[[&lt;/span&gt; &lt;span class="nv"&gt;$reponse&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;y&amp;quot;&lt;/span&gt; &lt;span class="o"&gt;]]&lt;/span&gt;
+     &lt;span class="k"&gt;then &lt;/span&gt;&lt;span class="nb"&gt;echo enable &lt;/span&gt;server &lt;span class="nv"&gt;$BACKEND&lt;/span&gt;/&lt;span class="nv"&gt;$WEBSERVER&lt;/span&gt; | &lt;span class="nv"&gt;$SOCQUETTE&lt;/span&gt;
+     sleep 2
+     &lt;span class="nb"&gt;echo&lt;/span&gt; -e show stat | &lt;span class="nv"&gt;$SOCQUETTE&lt;/span&gt; | grep &lt;span class="nv"&gt;$WEBSERVER&lt;/span&gt; | grep -v check | awk -F&lt;span class="s1"&gt;&amp;#39;[,|]&amp;#39;&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;{print $2 &amp;quot; ===&amp;amp;gt; &amp;quot;$18}&amp;#39;&lt;/span&gt; &lt;span class="nv"&gt;OFS&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;,&amp;quot;&lt;/span&gt;
+    &lt;span class="k"&gt;fi&lt;/span&gt;
+&lt;span class="k"&gt;     if&lt;/span&gt; &lt;span class="o"&gt;[[&lt;/span&gt; &lt;span class="nv"&gt;$reponse&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;n&amp;quot;&lt;/span&gt; &lt;span class="o"&gt;]]&lt;/span&gt;
+     &lt;span class="k"&gt;then &lt;/span&gt;&lt;span class="nb"&gt;echo&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;###Leaving###&amp;quot;&lt;/span&gt;
+    &lt;span class="k"&gt;fi&lt;/span&gt;
+    &lt;span class="o"&gt;}&lt;/span&gt;
+
+
+    maintenance &lt;span class="o"&gt;()&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt;
+    &lt;span class="nb"&gt;echo&lt;/span&gt; -e &lt;span class="s2"&gt;&amp;quot;$ROUGE&amp;quot;&amp;quot;---------------------------------------- &amp;quot;&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;$NORMAL&amp;quot;&lt;/span&gt;
+    &lt;span class="nb"&gt;echo&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;Do you want to enable maintenance? (y/n)&amp;quot;&lt;/span&gt;
+    &lt;span class="nb"&gt;echo&lt;/span&gt; -e &lt;span class="s2"&gt;&amp;quot;$ROUGE&amp;quot;&amp;quot;---------------------------------------- &amp;quot;&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;$NORMAL&amp;quot;&lt;/span&gt;
+    &lt;span class="nb"&gt;read &lt;/span&gt;reponse
+     &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;[[&lt;/span&gt; &lt;span class="nv"&gt;$reponse&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;y&amp;quot;&lt;/span&gt; &lt;span class="o"&gt;]]&lt;/span&gt;
+     &lt;span class="k"&gt;then&lt;/span&gt;
+&lt;span class="k"&gt;     for &lt;/span&gt;i in &lt;span class="nv"&gt;$SERVERS&lt;/span&gt;
+     &lt;span class="k"&gt;do&lt;/span&gt;
+&lt;span class="k"&gt;     &lt;/span&gt;&lt;span class="nb"&gt;echo &lt;/span&gt;disable server &lt;span class="nv"&gt;$BACKEND&lt;/span&gt;/&lt;span class="nv"&gt;$i&lt;/span&gt; | &lt;span class="nv"&gt;$SOCQUETTE&lt;/span&gt;
+     sleep 2
+     &lt;span class="k"&gt;done&lt;/span&gt;
+&lt;span class="k"&gt;    &lt;/span&gt;check_status
+    &lt;span class="k"&gt;fi&lt;/span&gt;
+&lt;span class="k"&gt;         if&lt;/span&gt; &lt;span class="o"&gt;[[&lt;/span&gt; &lt;span class="nv"&gt;$reponse&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;n&amp;quot;&lt;/span&gt; &lt;span class="o"&gt;]]&lt;/span&gt;
+         &lt;span class="k"&gt;then &lt;/span&gt;&lt;span class="nb"&gt;echo&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;###Leaving###&amp;quot;&lt;/span&gt;
+    &lt;span class="k"&gt;fi&lt;/span&gt; 
+    &lt;span class="o"&gt;}&lt;/span&gt;
+
+    enable_all &lt;span class="o"&gt;()&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt;
+    &lt;span class="nb"&gt;echo&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;Do you want to enable all servers? (y/n)&amp;quot;&lt;/span&gt;
+    &lt;span class="nb"&gt;read &lt;/span&gt;reponse
+            &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;[[&lt;/span&gt; &lt;span class="nv"&gt;$reponse&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;y&amp;quot;&lt;/span&gt; &lt;span class="o"&gt;]]&lt;/span&gt;
+            &lt;span class="k"&gt;then&lt;/span&gt;
+&lt;span class="k"&gt;            for &lt;/span&gt;i in &lt;span class="nv"&gt;$SERVERS&lt;/span&gt;
+            &lt;span class="k"&gt;do&lt;/span&gt;
+&lt;span class="k"&gt;            &lt;/span&gt;&lt;span class="nb"&gt;echo enable &lt;/span&gt;server &lt;span class="nv"&gt;$BACKEND&lt;/span&gt;/&lt;span class="nv"&gt;$i&lt;/span&gt; | &lt;span class="nv"&gt;$SOCQUETTE&lt;/span&gt;
+            sleep 2
+            &lt;span class="k"&gt;done&lt;/span&gt;
+&lt;span class="k"&gt;    &lt;/span&gt;check_status
+    &lt;span class="k"&gt;fi&lt;/span&gt;
+&lt;span class="k"&gt;         if&lt;/span&gt; &lt;span class="o"&gt;[[&lt;/span&gt; &lt;span class="nv"&gt;$reponse&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;n&amp;quot;&lt;/span&gt; &lt;span class="o"&gt;]]&lt;/span&gt;
+         &lt;span class="k"&gt;then &lt;/span&gt;&lt;span class="nb"&gt;echo&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;###Leaving###&amp;quot;&lt;/span&gt;
+    &lt;span class="k"&gt;fi&lt;/span&gt;
+    &lt;span class="o"&gt;}&lt;/span&gt;
+
+
+    check_status &lt;span class="o"&gt;()&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt;
+    &lt;span class="k"&gt;for &lt;/span&gt;i in &lt;span class="nv"&gt;$SERVERS&lt;/span&gt;
+    &lt;span class="k"&gt;do&lt;/span&gt;
+&lt;span class="k"&gt;    &lt;/span&gt;&lt;span class="nb"&gt;echo &lt;/span&gt;show stat | &lt;span class="nv"&gt;$SOCQUETTE&lt;/span&gt; | grep &lt;span class="nv"&gt;$i&lt;/span&gt; | grep -v check | awk -F&lt;span class="s1"&gt;&amp;#39;[,|]&amp;#39;&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;{print $2 &amp;quot;===&amp;amp;gt;&amp;quot;$18}&amp;#39;&lt;/span&gt; &lt;span class="nv"&gt;OFS&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;,&amp;quot;&lt;/span&gt; 
+            &lt;span class="k"&gt;done&lt;/span&gt;
+    &lt;span class="o"&gt;}&lt;/span&gt;
+
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;((&lt;/span&gt;&lt;span class="nv"&gt;$# &lt;/span&gt;&lt;span class="o"&gt;==&lt;/span&gt; 0&lt;span class="o"&gt;))&lt;/span&gt;; &lt;span class="k"&gt;then&lt;/span&gt;
+&lt;span class="k"&gt;    &lt;/span&gt;print_help
+    &lt;span class="k"&gt;fi&lt;/span&gt;
+
+&lt;span class="k"&gt;    while &lt;/span&gt;&lt;span class="nb"&gt;getopts &lt;/span&gt;smdeha pouet
+    &lt;span class="k"&gt;do case&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;$pouet&amp;quot;&lt;/span&gt; in
+     d&lt;span class="o"&gt;)&lt;/span&gt; disable_server;;
+     e&lt;span class="o"&gt;)&lt;/span&gt; enable_server;;
+     &lt;span class="o"&gt;[&lt;/span&gt;?&lt;span class="o"&gt;])&lt;/span&gt; print_help;;
+     &lt;span class="s1"&gt;&amp;#39;#$&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;)&lt;/span&gt; print_help;;
+     a&lt;span class="o"&gt;)&lt;/span&gt; enable_all;;
+     s&lt;span class="o"&gt;)&lt;/span&gt; check_status;;
+     m&lt;span class="o"&gt;)&lt;/span&gt; maintenance;;
+     h&lt;span class="o"&gt;)&lt;/span&gt; print_help;;
+
+     &lt;span class="k"&gt;esac&lt;/span&gt;
+&lt;span class="k"&gt;    done&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Exemple pour ce que ça donne concrètement:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Sortir un serveur du cluster:&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    prod@lb1:~# ./wwwcluster.sh -d web2
+    ----------------------------------  
+    Do you want to disable web2? &lt;span class="o"&gt;(&lt;/span&gt;y/n&lt;span class="o"&gt;)&lt;/span&gt;
+    ----------------------------------  
+    y
+
+    &lt;span class="nv"&gt;web2&lt;/span&gt; &lt;span class="o"&gt;===&lt;/span&gt;&amp;gt;; MAINT
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;ul&gt;
+&lt;li&gt;Afficher l’état des serveurs:&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    prod@lb1:~# ./wwwcluster.sh -s
+    &lt;span class="nv"&gt;web1&lt;/span&gt;&lt;span class="o"&gt;===&lt;/span&gt;&amp;gt;UP
+    &lt;span class="nv"&gt;web2&lt;/span&gt;&lt;span class="o"&gt;===&lt;/span&gt;&amp;gt;MAINT
+    &lt;span class="nv"&gt;web3&lt;/span&gt;&lt;span class="o"&gt;===&lt;/span&gt;&amp;gt;UP
+    &lt;span class="nv"&gt;web4&lt;/span&gt;&lt;span class="o"&gt;===&lt;/span&gt;&amp;gt;DOWN
+    prod@lb1:~# 
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Je vous laisse tester les autres fonctions…&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Renvoyer les logs haproxy vers syslog:&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;On se souvient de ces deux lignes dans notre configuration de Haproxy:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    log /dev/log local0 info
+    log /dev/log local0 notice
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Sous Ubuntu, RSyslog est installé de base, il nous suffit donc de le
+configurer afin d’envoyer les logs vers où bon nous semble. Pour ma part
+je me suis contenté de rajouter dans mon /etc/rsyslog/d/ un fichier
+haproxy.conf qui a cette forme:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$programname&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;haproxy&amp;#39;&lt;/span&gt; and &lt;span class="nv"&gt;$syslogseverity&lt;/span&gt;-text &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;info&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;)&lt;/span&gt; &lt;span class="k"&gt;then&lt;/span&gt; -/var/log/haproxy/haproxy-info.log
+    &amp;amp;amp; ~
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$programname&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;haproxy&amp;#39;&lt;/span&gt; and &lt;span class="nv"&gt;$syslogseverity&lt;/span&gt;-text &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;notice&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;)&lt;/span&gt; &lt;span class="k"&gt;then&lt;/span&gt; -/var/log/haproxy/haproxy-notice.log
+    &amp;amp;amp; ~
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Un reload de Rsyslog plus tard, j’ai bien mes info et notice qui sont
+renvoyés vers mon /var/log/haproxy/haproxy-*.log.&lt;/p&gt;
+&lt;p&gt;Et n’oubliez pas d’adapter votre sysctl.conf pour accroitre les
+performances (à adapter suivant votre configuration et vos besoins):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    net.ipv4.tcp_tw_reuse &lt;span class="o"&gt;=&lt;/span&gt; 1
+    net.ipv4.ip_local_port_range &lt;span class="o"&gt;=&lt;/span&gt; 1024 65023
+    net.ipv4.tcp_max_syn_backlog &lt;span class="o"&gt;=&lt;/span&gt; 10240
+    net.ipv4.tcp_max_tw_buckets &lt;span class="o"&gt;=&lt;/span&gt; 400000
+    net.ipv4.tcp_max_orphans &lt;span class="o"&gt;=&lt;/span&gt; 60000
+    net.ipv4.tcp_synack_retries &lt;span class="o"&gt;=&lt;/span&gt; 3
+    net.core.somaxconn &lt;span class="o"&gt;=&lt;/span&gt; 10000
+
+    net.ipv4.tcp_syncookies &lt;span class="o"&gt;=&lt;/span&gt; 1
+    net.ipv4.conf.all.rp_filter &lt;span class="o"&gt;=&lt;/span&gt; 1
+    net.ipv4.tcp_max_syn_backlog &lt;span class="o"&gt;=&lt;/span&gt; 1024
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;&lt;strong&gt;La gestion du HTTPS:&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;J’ai commencé par
+configurer &lt;a href="https://www.stunnel.org/index.html" title="stunnel"&gt;stunnel&lt;/a&gt; qui
+fait ça très bien, et qui s’installe et se configure en 30 secondes. Ca
+fonctionnait tres tres bien, mais sous grosse charge je me suis rendu
+compte que stunnel avait des comportements bizarres. J’ai donc essayé le
+offloading ssl avec HaProxy qui lui aussi fonctionnait tres bien, mais
+sur une version de développement. L’argent étant le nerf de la guerre,
+en attendant que l’offload SSL soit implanté en version stable dans
+HaProxy, je me suis dirigé sur un proxy nginx tout simple qui est rompu
+à l’exercice, voici juste un bout de la configuration afin d’illustrer
+le proxy_pass qui écoute sur le port 443 et renvoie vers… Haproxy.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;                ssl_certificate /etc/ssl/private/famihero.crt;
+                ssl_certificate_key /etc/ssl/private/famihero.key;
+         ssl_client_certificate /etc/ssl/certs/GandiStandardSSLCA.pem;
+
+                location / &lt;span class="o"&gt;{&lt;/span&gt;
+                    proxy_pass http://127.0.0.1:80&lt;span class="nv"&gt;$request_uri&lt;/span&gt;;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;&lt;strong&gt;3. Corosync et Pacemaker&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Vous l’aurez remarqué, je parle d’ip flottante au début. C’est sur cette
+adresse ip qu’arrivent les requêtes qui sont ensuite rebalancées au load
+balancer actif. Cas pratique:&lt;/p&gt;
+&lt;p&gt;Si lb1 tombe pour une raison ou une autre, l’ip redirige le trafic
+automatiquement et de manière totalement transparente pour l’utilisateur
+vers lb2 qui devient le load balancer actif.&lt;/p&gt;
+&lt;p&gt;Il faut bien évidemment avoir deux load balancers avec une configuration
+identique (haproxy, nginx, memcache, etc…).&lt;/p&gt;
+&lt;p&gt;Pour bénéficier de la haute disponibilité au niveau des proxys, j’ai
+utilisé le couple corosync/pacemaker. Ce sont deux softs relativement
+complexes et je ne dois m’en servir qu’à 10% de leurs possibilités, mais
+ils font vraiment bien leur taffe.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Installation et configuration.&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Comme Pacemaker utilise corosync de base sous Ubuntu j’ai juste lancé un
+apt-get install pacemaker. La configuration en elle même est très
+facile, surtout pour ceux qui connaissent un peu Cisco.&lt;/p&gt;
+&lt;p&gt;Juste après l’installation, il faut éditer le fichier
+/etc/default/corosync et setter à ‘yes’ pour que corosync se lance au
+boot:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    prod@lb1:~# cat /etc/default/corosync 
+    &lt;span class="c"&gt;# start corosync at boot [yes|no]&lt;/span&gt;
+    &lt;span class="nv"&gt;START&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;yes
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;On fera bien évidement la même chose sur le second load-balancer.&lt;/p&gt;
+&lt;p&gt;Il nous faut ensuite générer une clef d’authentification sur un des deux
+load-balancers avec la commande:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    cyril@lb1:~# sudo corosync-keygen
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Qui va aller créer un fichier /etc/corosync/authkey. On recopie cette
+clef sur lb2 puis on édite ensuite le fichier
+/etc/corosync/corosync.conf et on configure la partie interface avec vos
+informations réseau.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;      interface &lt;span class="o"&gt;{&lt;/span&gt;
+      &lt;span class="c"&gt;# Votre numéro d&amp;#39;interface &lt;/span&gt;
+      ringnumber: 0
+                    &lt;span class="c"&gt;# Le réseau utilisé sur la carte. Loopback par défaut.&lt;/span&gt;
+      &lt;span class="c"&gt;#bindnetaddr: 127.0.0.1 &lt;/span&gt;
+      bindnetaddr: 78.109.93.0
+                    &lt;span class="c"&gt;# L&amp;#39;adresse de multicast pour les tests&lt;/span&gt;
+      mcastaddr: 226.94.1.1
+                    &lt;span class="c"&gt;# Port à utiliser pour le multicast&lt;/span&gt;
+      mcastport: 5405
+     &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;On va ensuite lancer corosync:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    cyril@lb1:/# sudo /etc/init.d/corosync start
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Un simple crm_mon vous permettra de voir que corosync tourne bien. Il
+suffit maintenant de configurer la CIB, soit la Configuration
+Information Base. C’est une fois de plus tres simple.&lt;/p&gt;
+&lt;p&gt;On va utiliser la commande crm pour rentrer en mode commande en ligne:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    cyril@lb2:~# sudo crm
+    crm&lt;span class="o"&gt;(&lt;/span&gt;live&lt;span class="o"&gt;)&lt;/span&gt;&lt;span class="c"&gt;# &lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Puis on crée notre première configuration:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    crm&lt;span class="o"&gt;(&lt;/span&gt;live&lt;span class="o"&gt;)&lt;/span&gt;&lt;span class="c"&gt;# cib new configlbfami201211&lt;/span&gt;
+    INFO: configlbfami201211 shadow CIB created
+    crm&lt;span class="o"&gt;(&lt;/span&gt;configlbfami201211&lt;span class="o"&gt;)&lt;/span&gt;&lt;span class="c"&gt;#&lt;/span&gt;
+    crm&lt;span class="o"&gt;(&lt;/span&gt;configlbfami201211&lt;span class="o"&gt;)&lt;/span&gt;&lt;span class="c"&gt;# configure&lt;/span&gt;
+    crm&lt;span class="o"&gt;(&lt;/span&gt;configlbfami201211&lt;span class="o"&gt;)&lt;/span&gt;configure#
+    crm&lt;span class="o"&gt;(&lt;/span&gt;configlbfami201211&lt;span class="o"&gt;)&lt;/span&gt;configure# property stonith-enabled&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="nb"&gt;false&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;et c’est parti pour la configuration de notre ip virtuelle:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    crm&lt;span class="o"&gt;(&lt;/span&gt;configlbfami201211&lt;span class="o"&gt;)&lt;/span&gt;configure# primitive vip ocf:heartbeat:IPaddr2 params &lt;span class="nv"&gt;ip&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;78.109.93.62&amp;quot;&lt;/span&gt; &lt;span class="nv"&gt;nic&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;eth0&amp;quot;&lt;/span&gt; &lt;span class="nv"&gt;cidr_netmask&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;24&amp;quot;&lt;/span&gt; op start &lt;span class="nv"&gt;interval&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;0s&amp;quot;&lt;/span&gt; &lt;span class="nv"&gt;timeout&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;60s&amp;quot;&lt;/span&gt; op monitor &lt;span class="nv"&gt;interval&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;5s&amp;quot;&lt;/span&gt; &lt;span class="nv"&gt;timeout&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;20s&amp;quot;&lt;/span&gt; op stop &lt;span class="nv"&gt;interval&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;0s&amp;quot;&lt;/span&gt; &lt;span class="nv"&gt;timeout&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;60s&amp;quot;&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;On peut bien sûr configurer idéalement plusieurs ip virtuelles, chacune
+pour une utilisation bien différente (intranet, contenu statique, etc),
+voire même rajouter un autre load-balancer.&lt;/p&gt;
+&lt;p&gt;Il ne nous reste plus qu’à vérifier la config mise en place et de la
+commiter:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    crm&lt;span class="o"&gt;(&lt;/span&gt;configlbfami201211&lt;span class="o"&gt;)&lt;/span&gt;configure# verify
+    crm&lt;span class="o"&gt;(&lt;/span&gt;configlbfami201211&lt;span class="o"&gt;)&lt;/span&gt;configure# end
+    There are changes pending. Do you want to commit them? y
+    crm&lt;span class="o"&gt;(&lt;/span&gt;configlbfami201211&lt;span class="o"&gt;)&lt;/span&gt;&lt;span class="c"&gt;#&lt;/span&gt;
+    crm&lt;span class="o"&gt;(&lt;/span&gt;configlbfami201211&lt;span class="o"&gt;)&lt;/span&gt;&lt;span class="c"&gt;# cib use live&lt;/span&gt;
+    crm&lt;span class="o"&gt;(&lt;/span&gt;live&lt;span class="o"&gt;)&lt;/span&gt;&lt;span class="c"&gt;# cib commit configlbfami201211&lt;/span&gt;
+    INFO: commited &lt;span class="s1"&gt;&amp;#39;configlbfami201211&amp;#39;&lt;/span&gt; shadow CIB to the cluster
+    crm&lt;span class="o"&gt;(&lt;/span&gt;live&lt;span class="o"&gt;)&lt;/span&gt;&lt;span class="c"&gt;# quit&lt;/span&gt;
+    bye
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;C’est fini, ça n’a pas pris plus de 2 minutes, même si dans ce cas la
+problématique est simplissime (assurer la haute dispo de deux nodes, lb1
+et lb2 sur une ip virtuelle) et que nous ne sommes pas du tout rentré
+dans les questions de quorums, etc… On peut vérifier notre configuration
+avec un ‘crm_mon’:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    &lt;span class="o"&gt;============&lt;/span&gt;
+    Last updated: Mon Apr 15 16:21:35 2013
+    Last change: Sun Nov  25 23:58:42 2012 via cibadmin on lb1
+    Stack: openais
+    Current DC: lb1 - partition with quorum
+    Version: 1.1.7-ee0730e13d124c3d58f00016c3376a1de5323cff
+    2 Nodes configured, 2 expected votes
+    1 Resources configured.
+    &lt;span class="o"&gt;============&lt;/span&gt;
+
+    Online: &lt;span class="o"&gt;[&lt;/span&gt; lb1 lb2 &lt;span class="o"&gt;]&lt;/span&gt;
+
+    vip     &lt;span class="o"&gt;(&lt;/span&gt;ocf::heartbeat:IPaddr2&lt;span class="o"&gt;)&lt;/span&gt;:       Started lb1
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Ou avec crm en lançant:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    cyril@lb2:~# sudo crm configure
+    crm&lt;span class="o"&gt;(&lt;/span&gt;live&lt;span class="o"&gt;)&lt;/span&gt;configure# show
+    node lb1
+    node lb2
+    primitive vip ocf:heartbeat:IPaddr2   
+    params &lt;span class="nv"&gt;ip&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;78.109.93.62&amp;quot;&lt;/span&gt; &lt;span class="nv"&gt;nic&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;eth0&amp;quot;&lt;/span&gt; &lt;span class="nv"&gt;cidr_netmask&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;24&amp;quot;&lt;/span&gt;   
+    op start &lt;span class="nv"&gt;interval&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;0s&amp;quot;&lt;/span&gt; &lt;span class="nv"&gt;timeout&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;60s&amp;quot;&lt;/span&gt;   
+    op monitor &lt;span class="nv"&gt;interval&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;5s&amp;quot;&lt;/span&gt; &lt;span class="nv"&gt;timeout&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;20s&amp;quot;&lt;/span&gt;   
+    op stop &lt;span class="nv"&gt;interval&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;0s&amp;quot;&lt;/span&gt; &lt;span class="nv"&gt;timeout&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;60s&amp;quot;&lt;/span&gt;
+    property &lt;span class="nv"&gt;$id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;cib-bootstrap-options&amp;quot;&lt;/span&gt;   
+    dc-version&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;1.1.7-ee0730e13d124c3d58f00016c3376a1de5323cff&amp;quot;&lt;/span&gt;   
+    cluster-infrastructure&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;openais&amp;quot;&lt;/span&gt;   
+    expected-quorum-votes&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;2&amp;quot;&lt;/span&gt;   
+    stonith-enabled&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;false&amp;quot;&lt;/span&gt;   
+    no-quorum-policy&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s2"&gt;&amp;quot;ignore&amp;quot;&lt;/span&gt;
+    crm&lt;span class="o"&gt;(&lt;/span&gt;live&lt;span class="o"&gt;)&lt;/span&gt;configure# &lt;span class="nb"&gt;exit&lt;/span&gt;
+&lt;span class="nb"&gt;    &lt;/span&gt;bye
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Quelques commandes pratiques avec le Cluster Resource Manager, du genre
+migrer l’ip flottante sur lb2 pour faire une opération de maintenance
+sur lb1:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    cyril@lb2:~# sudo crm
+    crm&lt;span class="o"&gt;(&lt;/span&gt;live&lt;span class="o"&gt;)&lt;/span&gt;&lt;span class="c"&gt;# resource&lt;/span&gt;
+    crm&lt;span class="o"&gt;(&lt;/span&gt;live&lt;span class="o"&gt;)&lt;/span&gt;resource# list
+    failover-ip     &lt;span class="o"&gt;(&lt;/span&gt;ocf::heartbeat:IPaddr&lt;span class="o"&gt;)&lt;/span&gt; Started
+    crm&lt;span class="o"&gt;(&lt;/span&gt;live&lt;span class="o"&gt;)&lt;/span&gt;resource# migrate failover-ip lb2
+    crm&lt;span class="o"&gt;(&lt;/span&gt;live&lt;span class="o"&gt;)&lt;/span&gt;resource# bye
+    bye
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Bref, c’est tout simple à mettre en place et c’est d’une robustesse et
+d’une facilité incroyable.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;4. Nginx&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Les frontaux sont bien sûr tous sur nginx. C’est léger, véloce, et c’est
+un régal à configurer.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Installation:&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    prod@web4:~# &lt;span class="nb"&gt;cd&lt;/span&gt; /usr/local/src/
+    prod@web4:~# tar xfz nginx-1.2.8.tar.gz 
+    prod@web4:~# &lt;span class="nb"&gt;cd &lt;/span&gt;nginx-1.2.8/
+    prod@web4:~# ./configure --with-http_gzip_static_module --with-http_stub_status_module --with-http_ssl_module --with-http_realip_module
+    prod@web4:~# sudo make
+    prod@web4:~# sudo make install
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Rien de bien particulier, ça prend 30 secondes.&lt;/p&gt;
+&lt;p&gt;La mise en place de la configuration nécessite de prendre un peu plus de
+temps et pas mal de tests pour trouver la meilleure combinaison
+possible.&lt;/p&gt;
+&lt;p&gt;Vous faire un copier/coller de la configuration (nginx.conf) n’a que peu
+d’intérêt, aussi on va juste regarder quelques paramètres non-vanilla:&lt;/p&gt;
+&lt;p&gt;On se souvient qu’on a compilé nginx avec le
+module &lt;a href="http://wiki.nginx.org/HttpRealipModule" title="HttpRealipModule"&gt;–with-http_realip_module&lt;/a&gt;,
+ça va nous servir à recevoir les ip des clients plutôt que l’ip du
+load-balancer.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    set_real_ip_from   10.17.9.3;
+    real_ip_header X-Forwarded-For;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;On prend bien soin de calibrer les timeouts:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    client_body_timeout   60;
+    client_header_timeout 60;
+    keepalive_timeout     60 60;
+    send_timeout          60;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;On ajoute quelques options de bon sens:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    ignore_invalid_headers   on;
+    recursive_error_pages    on;
+    sendfile                 on;
+    server_name_in_redirect off;
+    server_tokens           off;
+
+    tcp_nodelay on;
+    tcp_nopush  on;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Et la compression, ça serait impensable de ne pas l’utiliser:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;      gzip              on;
+      &lt;span class="c"&gt;#gzip_static       on;&lt;/span&gt;
+      gzip_buffers      16 8k;
+      gzip_comp_level   9;
+      gzip_http_version 1.1;
+      gzip_min_length   1000;
+      gzip_types application/x-javascript application/json text/css text/plain image/x-icon image/bmp image/png image/gif text/javascript;
+      gzip_vary         on;
+      gzip_proxied any;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Toutes ces commandes se retrouvent dans
+le &lt;a href="http://wiki.nginx.org/HttpCoreModule" title="HttpCoreModule"&gt;HttpCoreModule&lt;/a&gt;,
+quand je me mets à le lire je découvre plein de nouvelles choses et du
+coup je passe pas mal de temps à voir ce que je peux optimiser ou mieux
+faire avec.&lt;/p&gt;
+&lt;p&gt;Je mets par habitude mes sites dans un repertoire à part. Certains
+créent aussi un lien symbolique sur un autre répertoire avec du
+site-available pour faire comme avec Apache.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    include /usr/local/nginx/conf/sites-enabled/*;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;La configuration du serveur est tout aussi palpitante, rien de
+particulier si ça n’est la partie server_name que j’ai décliné comme ça
+(pour jouer avec les différents server_namer que je possède):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    &lt;span class="nb"&gt;set&lt;/span&gt; &lt;span class="nv"&gt;$lead_domain_name&lt;/span&gt; www.famihero.com;
+    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$http_host&lt;/span&gt; !&lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nv"&gt;$lead_domain_name&lt;/span&gt;&lt;span class="o"&gt;)&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt;
+    rewrite  ^&lt;span class="o"&gt;(&lt;/span&gt;.*&lt;span class="o"&gt;)&lt;/span&gt;&lt;span class="nv"&gt;$ &lt;/span&gt; http://&lt;span class="nv"&gt;$lead_domain_name$1&lt;/span&gt; permanent;
+    &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;J’aurai aussi pu faire ça comme ça mais c’est moins sexy et moins
+pratique:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;$http_host&lt;/span&gt; ~* &lt;span class="o"&gt;(&lt;/span&gt;www.famihero.fr|famihero.fr|www.famiheros.com|famiheros.com|etc...&lt;span class="o"&gt;)&lt;/span&gt; &lt;span class="o"&gt;)&lt;/span&gt; &lt;span class="o"&gt;{&lt;/span&gt;
+    rewrite  ^/&lt;span class="o"&gt;(&lt;/span&gt;.*&lt;span class="o"&gt;)&lt;/span&gt;&lt;span class="nv"&gt;$ &lt;/span&gt; http://www.famihero.com/&lt;span class="nv"&gt;$1&lt;/span&gt;  permanent;
+    &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;On va aussi penser à ne pas logger les check de haproxy pour ne pas
+pourrir les logs:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    location /haproxytest.txt &lt;span class="o"&gt;{&lt;/span&gt;
+    access_log off;
+    &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;La partie pour les static fait l’objet d’une configuration à part qui
+donne ça:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;    server &lt;span class="o"&gt;{&lt;/span&gt;
+        server_name     statics.famihero.com;
+        root /var/www/static3/current/web;
+
+        location / &lt;span class="o"&gt;{&lt;/span&gt;
+            &lt;span class="k"&gt;return &lt;/span&gt;404;
+        &lt;span class="o"&gt;}&lt;/span&gt;
+
+        location ~ &lt;span class="se"&gt;\.&lt;/span&gt;&lt;span class="o"&gt;(&lt;/span&gt;?:jpg|jpeg|js|css|gif|png|swf|ico|pdf&lt;span class="o"&gt;)&lt;/span&gt;&lt;span class="nv"&gt;$ &lt;/span&gt;&lt;span class="o"&gt;{&lt;/span&gt;
+            expires        365d;
+            access_log     off;
+            add_header Pragma public;
+            add_header Cache-Control &lt;span class="s2"&gt;&amp;quot;public, must-revalidate, proxy-revalidate&amp;quot;&lt;/span&gt;;
+        &lt;span class="o"&gt;}&lt;/span&gt;
+    &lt;span class="o"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;On va s’arrêter là pour aujourd’hui. Si j’ai le courage de faire une
+deuxième partie, on parlera de php-fpm,
+de &lt;a href="https://code.google.com/p/mysql-master-ha/" title="MMHA"&gt;mysql-master-ha&lt;/a&gt; et
+de &lt;a href="https://www.icinga.org/" title="Icinga"&gt;Icinga&lt;/a&gt;.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">cyrilb</dc:creator><pubDate>Mon, 15 Apr 2013 10:02:00 +0200</pubDate><guid>tag:cyrilb.me,2013-04-15:45.html</guid><category>haproxy</category><category>infra</category><category>linux</category><category>nginx</category></item><item><title>Aria2c, une alternative à Wget</title><link>http://cyrilb.me/aria2c-une-alternative-a-wget.html</link><description>&lt;p&gt;Je me sers pratiquement tous les jours de wget ou de curl, que ce soit
+pour downloader un fichier quelconque, pour rapatrier et analyser mes
+headers ou tester les performances de certaines parties de mon site.&lt;/p&gt;
+&lt;p&gt;Je ne parle même pas du nombre de mes scripts qui se servent de curl ou
+de wget, bref, impossible de m’en passer, d’autant plus que ces outils
+ont l’avantage d’être installé de base sur la plupart des distributions
+Linux actuelles.&lt;/p&gt;
+&lt;p&gt;J’ai néanmoins découvert récemment Aria2, un outil suffisamment sympa
+qui gère le download multi-protocoles (http, ftp, bittorent, etc)… et
+qui fourmille d’options que je vais vous faire découvrir ici, du moins
+celles qui m’ont servies cette semaine:&lt;/p&gt;
+&lt;p&gt;Le download d’un fichier bittorrent qu’on met en mémoire:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;cyril@hoth:~&lt;span class="nv"&gt;$ &lt;/span&gt;aria2c --follow-torrent&lt;span class="o"&gt;=&lt;/span&gt;mem http://slackware.com/torrents/slackware-14.0-install-dvd.torrent
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Voici l’output tronqué pour les curieux:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span class="se"&gt;\#&lt;/span&gt;2 SIZE:177.4MiB/2,345.4MiB&lt;span class="o"&gt;(&lt;/span&gt;7%&lt;span class="o"&gt;)&lt;/span&gt; CN:55 SEED:49 SPD:7.5MiBs
+UP:66.4KiBs&lt;span class="o"&gt;(&lt;/span&gt;1.9MiB&lt;span class="o"&gt;)&lt;/span&gt; ETA:4m48s&lt;span class="o"&gt;]&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Le download de base, avec un fichier de sortie pour les erreurs:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;cyril@hoth:~&lt;span class="nv"&gt;$ &lt;/span&gt;aria2c --save-session&lt;span class="o"&gt;=&lt;/span&gt;output.log http://mirrors.slackware.com/slackware-iso/slackware64-14.0-iso/slackware64-14.0-install-dvd.iso
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Le download avec plusieurs sources, le download est donc plus rapide:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;cyril@hoth:~&lt;span class="nv"&gt;$ &lt;/span&gt;aria2c -x 2 http://mirrors.slackware.com/slackware-iso/slackware64-14.0-iso/slackware64-14.0-install-dvd.iso
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Le download de la même image depuis plusieurs sources (ftp et http):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;cyril@hoth:~&lt;span class="nv"&gt;$ &lt;/span&gt;aria2c -x 2 http://mirrors.slackware.com/slackware-iso/slackware64-14.0-iso/slackware64-14.0-install-dvd.iso ftp://mirrors.slackware.com/slackware-iso/slackware64-14.0-iso/slackware64-14.0-install-dvd.iso
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Le download de fichiers contenus dans un fichier quelconque, avec une
+concurrence de 10 et avec une sortie:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;cyril@lb2:~&lt;span class="nv"&gt;$ &lt;/span&gt;aria2c -istuff.txt -j10 --save-session&lt;span class="o"&gt;=&lt;/span&gt;output.log
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Qui nous permettra un joli resume si ça plante grâce à un:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;cyril@hoth:~&lt;span class="nv"&gt;$ &lt;/span&gt;aria2c -ioutput.log
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Bien sûr la séquence de download sera restaurée automatiquement après un
+CTRL-C et aria2 gère même IPV6, que demander de plus.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">cyrilb</dc:creator><pubDate>Tue, 12 Mar 2013 15:59:00 +0100</pubDate><guid>tag:cyrilb.me,2013-03-12:aria2c-une-alternative-a-wget.html</guid><category>aria2c</category><category>curl</category><category>linux</category><category>wget</category></item><item><title>Changer sa locale par défaut</title><link>http://cyrilb.me/changer-sa-locale-par-defaut.html</link><description>&lt;p&gt;Pas trop le temps de poster ces temps-ci, je me contenterai juste d’une
+petite note qui peut faire gagner pas mal de temps: changer les locales
+de son environnement. Je me base sur une distribution Ubuntu Server
+12.10 pour les exemples ci-dessous.&lt;/p&gt;
+&lt;p&gt;De base, mon système était installé avec les locales françaises:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;root@isengard:~# printenv | grep LANG &lt;span class="nv"&gt;LANG&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;fr_FR.UTF-8
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Je désirais passer mon environnement sous locale EN pour de multiples
+raisons. Les opérations à effectuer sont très simples:&lt;/p&gt;
+&lt;p&gt;​1. Rajouter la locale désirée dans le fichier
+/var/lib/locales/supported.d/local avec votre éditeur préféré (vi
+forcément).&lt;/p&gt;
+&lt;p&gt;​2. Régénérer la liste des locales supportées:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;root@isengard:~# dpkg-reconfigure locales
+    Generating locales...
+    en_AG.UTF-8... up-to-date
+    en_AU.UTF-8... up-to-date
+    en_BW.UTF-8... up-to-date
+    en_CA.UTF-8... up-to-date
+    en_DK.UTF-8... up-to-date
+    en_GB.UTF-8... up-to-date
+    en_HK.UTF-8... up-to-date
+    en_IE.UTF-8... up-to-date
+    en_IN.UTF-8... up-to-date
+    en_NG.UTF-8... up-to-date
+    en_NZ.UTF-8... up-to-date
+    en_PH.UTF-8... up-to-date
+    en_SG.UTF-8... up-to-date
+    en_US.UTF-8... up-to-date
+    en_ZA.UTF-8... up-to-date
+    en_ZM.UTF-8... up-to-date
+    en_ZW.UTF-8... up-to-date
+    fr_BE.UTF-8... up-to-date
+    fr_CA.UTF-8... up-to-date
+    fr_CH.UTF-8... up-to-date
+    fr_FR.UTF-8... up-to-date
+    fr_LU.UTF-8... up-to-date
+    Generation complete.
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;​3. Editer le fichier /etc/default/locale et rajoutez la locale de votre
+choix (dans mon cas j’ai ajouté LANG= »en_GB.UTF-8″).&lt;/p&gt;
+&lt;p&gt;​4. Redémarrez votre serveur.&lt;/p&gt;
+&lt;p&gt;​5. Enjoy !&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">cyrilb</dc:creator><pubDate>Wed, 26 Dec 2012 14:38:00 +0100</pubDate><guid>tag:cyrilb.me,2012-12-26:changer-sa-locale-par-defaut.html</guid><category>linux</category><category>locale</category></item><item><title>Tester les performances de ses disques</title><link>http://cyrilb.me/tester-les-performances-de-ses-disques.html</link><description>&lt;p&gt;Je suis en train de changer d’hébergeur, du coup je me retrouve à tester
+des serveurs différents de ceux que j’ai actuellement. Afin de m’assurer
+de la performance du nouveau matériel qu’on me propose, je déroule ces
+trois petits tests unitaires qui me permettent en moins de 20 minutes de
+voir si la puissance I/O fournie est suffisante pour ce que je veux en
+faire, de manière certes grossière mais pragmatique.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;1. Tests avec DD (Dédé pour les intimes).&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;C’est le premier tests que je lance, et le plus basique. Il me permet de
+tester la vitesse d’écriture d’un bloc de 1M (bs=1M) en prenant en
+compte la synchronisation des données entre la mémoire et le disque
+(conv=fdatasync physically write output file data before finishing).
+Simple et efficace, ça me donne tout de suite un premier indicateur. Ne
+pas hésiter à jouer avec la taille du bloc bien sûr.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;root@mirkwood:~# dd &lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;/dev/zero &lt;span class="nv"&gt;of&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="nb"&gt;test &lt;/span&gt;&lt;span class="nv"&gt;bs&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;1M &lt;span class="nv"&gt;count&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;1024 &lt;span class="nv"&gt;conv&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;fdatasync
+1024+0 records in
+1024+0 records out
+1073741824 bytes &lt;span class="o"&gt;(&lt;/span&gt;1,1 GB&lt;span class="o"&gt;)&lt;/span&gt; copied, 8,46055 s, 127 MB/s
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;&lt;strong&gt;2. Tests avec hdparm&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Nous allons maintenant tester la vitesse de lecture grâce à hdparm.
+Option intéressante, hdparm permet de tester la lecture depuis le cache
+du disque (option -t).&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;root@mirkwood:~# hdparm -t -T /dev/sda
+/dev/sda:
+Timing cached reads: 12532 MB in 2.00 &lt;span class="nv"&gt;seconds&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; 6270.87 MB/sec
+Timing buffered disk reads: 742 MB in 3.00 &lt;span class="nv"&gt;seconds&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; 247.13 MB/sec
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;&lt;strong&gt;3. Derniers tests avec IoZone.&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;On termine avec la Rolls des tests I/O: iozone. En plus de proposer des
+options vraiment sexy comme le re-read ou le re-write, sans parler du
+random read et random write, il permet d’exporter les résultats du bench
+sous format xls qui permettra d’importer vers excel et d’en faire des
+beaux tableaux. Iozone est vraiment bien fait, et fourmille d’options.
+pour ma part, je me contente généralement d’un (je vous laisse faire un
+iozone -h):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;root@mirkood:~/iozone3_394/src/current# ./iozone -a -i 0 -i 1 -b mirkwood.xls
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;A vous de jouer maintenant, et surtout, n’oubliez pas que le type de FS
+est primordial (vous n’obtiendrez pas les mêmes résultats entre du ext4
+et du XFS par exemple).&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">cyrilb</dc:creator><pubDate>Tue, 23 Oct 2012 11:11:00 +0200</pubDate><guid>tag:cyrilb.me,2012-10-23:tester-les-performances-de-ses-disques.html</guid><category>hdparm</category><category>iostat</category></item><item><title>Combien de workers pour nginx</title><link>http://cyrilb.me/combien-de-workers-pour-nginx.html</link><description>&lt;p&gt;La question du « combien je mets de worker_processes et
+worker_connections dans mon nginx.conf » revient souvent. Voici
+quelques lignes afin de savoir à quoi servent ces workers et de combien
+vous en avez besoin, et surtout, de savoir combien de requêtes clients
+vous allez pouvoir servir avec votre configuration.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;worker_processes&lt;/strong&gt; : Vient du Latin workus processus (ok c’est pas
+drôle). C’est tout simplement le nombre de « single-threaded process »
+qui vont spawner, un peu à l’instar des child process de Apache. Ca sert
+à plein de choses (diminuer la latence lorsque des workers sont bloqués
+par trop d’I/O sur le disque, limiter le nombre de connexions par
+process, etc). Dans la pratique, ça donne ça (remarquez le master
+process qui fait démarrer les workers process):&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;root@elendil:~# ps auxfw | grep -i nginx | grep -v grep
+root 6718 0.0 0.0 35496 1180 ? Ss Jul03 0:00 nginx: master process /usr/local/nginx/sbin/nginx
+nobolife 6719 0.0 0.0 37272 4092 ? S Jul03 22:01 &lt;span class="se"&gt;\_&lt;/span&gt; nginx: worker process
+nobolife 6721 0.0 0.0 36980 3868 ? S Jul03 21:02 &lt;span class="se"&gt;\_&lt;/span&gt; nginx: worker process
+nobolife 6722 0.0 0.0 37056 4192 ? S Jul03 21:39 &lt;span class="se"&gt;\_&lt;/span&gt; nginx: worker process
+nobolife 6723 0.0 0.0 37004 3980 ? S Jul03 21:40 &lt;span class="se"&gt;\_&lt;/span&gt; nginx: worker process
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Alors bien sûr, vous allez me demander pourquoi j’ai mis ma directive
+worker_processes à 4. Une fois de plus avec nginx c’est très simple. Le
+nombre de workers dépend tout simplement du nombre de cores que vous
+avez. Attention, là on est sur une configuration de type frontal web qui
+utilise gzip (setté à 9 chez moi) et SSL, avec un fort traffic, bref,
+une utilisation plus ou moins classique. Par contre, si vous utilisiez
+nginx pour servir des images statiques et que la taille totale de tous
+ces fichiers est supérieure au total de votre mémoire vive, les
+intégristes de nginx préconisent de baisser le nombre de workers process
+afin d’utiliser pleinement la bande passante de votre disque dur.&lt;/p&gt;
+&lt;p&gt;Il y a plein d’options que je vous encourage à tester avec la directive
+workers_processes: worker_priority qui permet de donner une priorité à
+tel ou tel processeur, worker_cpu_affinity qui permet de binder un
+worker à un cpu dédié, worker_rlimit_nofile…&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;worker_connections&lt;/strong&gt; : C’est le nombre de connections client que peut
+recevoir un process. Avec 1024 par défaut dans le nginx.conf, je vous
+suggère de vous baser sur cette simple équation pour connaître votre
+valeur de max_clients :&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;max_clients = worker_processes * worker_connections&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;Il vous suffit ensuite de tester l’équation en pratique sur les pages de
+votre site avec &lt;a href="http://httpd.apache.org/docs/2.2/programs/ab.html" title="Apache bench"&gt;Apache
+bench&lt;/a&gt; ou
+encore
+mieux, &lt;a href="http://linux.die.net/man/1/httperf" title="httperf"&gt;httperf&lt;/a&gt; afin de
+tester l’utilisation mémoire et vos temps de réponse. A vous de jouer !&lt;/p&gt;
+&lt;p&gt;A noter que vous retrouverez toutes ces informations sur le &lt;a href="http://wiki.nginx.org/Main" title="Wiki Nginx"&gt;wiki de
+nginx&lt;/a&gt;.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">cyrilb</dc:creator><pubDate>Fri, 10 Aug 2012 11:16:00 +0200</pubDate><guid>tag:cyrilb.me,2012-08-10:combien-de-workers-pour-nginx.html</guid><category>nginx</category><category>process</category><category>workers</category></item><item><title>Modifier les servers headers sur nginx</title><link>http://cyrilb.me/modifier-les-servers-headers-sur-nginx.html</link><description>&lt;p&gt;Nginx est à la fois un serveur HTTP et un reverse proxy. Pour ceux qui
+ne connaissent pas, je leur conseille de l’essayer sans tarder tant il
+s’avère robuste et souple (les fichiers de configuration sont un vrai
+régal pour qui vient d’Apache et sa relative lourdeur). C’est bien
+simple, à requêtes égales, nginx consomme beaucoup moins de processeur
+et de mémoire. L’essayer c’est l’adopter.&lt;br /&gt;
+Nous allons aujourd’hui aborder une petite astuce très simples à mettre
+en place sur Nginx en moins de trente secondes.&lt;/p&gt;
+&lt;p&gt;Modifier les servers header de nginx, afin qu’un curl par exemple nous
+retourne un « Server : Plop » plutôt qu’un « Server : Nginx ». A quoi ça
+sert? Surtout à éviter les scripts-kiddies qui se basent sur les headers
+afin d’exploiter des failles ou autre, et de rester discret si vous le
+souhaitez sur la technologie utilisée pour propulser votre serveur web.
+Et puis c’est toujours classe de renvoyer des headers bien
+personnalisés.&lt;/p&gt;
+&lt;p&gt;Je me base sur la version actuelle stable de nginx pour ces exemples,
+soit la release 1.2.2.&lt;/p&gt;
+&lt;p&gt;​1. Téléchargez les sources sur le site officiel.&lt;/p&gt;
+&lt;p&gt;​2. Décompressez où vous voulez (suivant votre sens plus ou moins
+développé du FHS).&lt;/p&gt;
+&lt;p&gt;​3. Editez avec votre éditeur favori le fichier
+src/http/ngx_http_header_filter_module.c&lt;/p&gt;
+&lt;p&gt;​4. Modifiez la réponse des lignes 49 et 50 :&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;static char ngx&lt;span class="se"&gt;\_&lt;/span&gt;http&lt;span class="se"&gt;\_&lt;/span&gt;server&lt;span class="se"&gt;\_&lt;/span&gt;string&lt;span class="o"&gt;[]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;Server: nginx&amp;quot;&lt;/span&gt; CRLF;  
+static char ngx&lt;span class="se"&gt;\_&lt;/span&gt;http&lt;span class="se"&gt;\_&lt;/span&gt;server&lt;span class="se"&gt;\_&lt;/span&gt;full&lt;span class="se"&gt;\_&lt;/span&gt;string&lt;span class="o"&gt;[]&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s2"&gt;&amp;quot;Server: &amp;quot;&lt;/span&gt; NGINX&lt;span class="se"&gt;\_&lt;/span&gt;VER CRLF;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;​5. Sauvegardez, puis compilez avec les options de votre choix, lancez
+nginx, puis vérifiez vos headers avec un curl -I http://www.monsite.com/
+par exemple. Enjoy, cela vous a pris 30 secondes.&lt;/p&gt;</description><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">cyrilb</dc:creator><pubDate>Wed, 18 Jul 2012 11:20:00 +0200</pubDate><guid>tag:cyrilb.me,2012-07-18:modifier-les-servers-headers-sur-nginx.html</guid><category>headers</category><category>nginx</category></item></channel></rss>
